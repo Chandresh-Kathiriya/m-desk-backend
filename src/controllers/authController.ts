@@ -1,11 +1,19 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Contact from '../models/Contact.js';
 import { generateToken } from '../utils/jwt.js';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, email, password, mobile, city, state, pincode } = req.body;
+    // We now extract 'role' from the request body, defaulting to 'customer'
+    const { name, email, password, mobile, city, state, pincode, role = 'customer' } = req.body;
+
+    // Strict validation to ensure only our standard roles are used
+    if (!['admin', 'customer', 'both'].includes(role)) {
+      res.status(400).json({ message: 'Invalid role specified' });
+      return;
+    }
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -13,9 +21,12 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Assign the contact type based on the standardized role
+    const contactType = role === 'admin' ? 'admin' : 'customer';
+
     const newContact = await Contact.create({
       name,
-      type: 'customer',
+      type: contactType,
       email,
       mobile,
       address: { city, state, pincode },
@@ -26,10 +37,14 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       email,
       password,
       mobile,
-      role: 'customer',
+      role, // Dynamically assigns 'admin' or 'customer'
       address: { city, state, pincode },
       contact: newContact._id,
     });
+
+    // Save the two-way link on the Contact model
+    newContact.linkedUser = newUser._id as mongoose.Types.ObjectId;
+    await newContact.save();
 
     const token = generateToken({
       userId: newUser._id.toString(),
@@ -38,7 +53,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     });
 
     res.status(201).json({
-      message: 'User registered successfully',
+      message: `${role.charAt(0).toUpperCase() + role.slice(1)} registered successfully`,
       token,
       user: {
         id: newUser._id,
