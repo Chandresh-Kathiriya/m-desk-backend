@@ -1,12 +1,15 @@
+import dotenv from 'dotenv';
+// Load environment variables from .env file
+dotenv.config();
+
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { connectDatabase } from './config/database.js';
 import authRoutes from './routes/authRoutes.js';
 import productRoutes from './routes/productRoutes.js';
+import categoryRoutes from './routes/categoryRoutes.js';
+import uploadRoutes from './routes/uploadRoutes.js';
 
-// Load environment variables from .env file
-dotenv.config();
 
 const app: Application = express();
 
@@ -20,6 +23,8 @@ connectDatabase();
 // Mount Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Default health check route
 app.get('/', (req: Request, res: Response) => {

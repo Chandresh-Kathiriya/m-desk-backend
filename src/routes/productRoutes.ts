@@ -6,39 +6,33 @@ import {
   getAdminProducts,
   getPublishedProducts,
   getProductById,
+  getAdminProductById,
 } from '../controllers/productController.js';
 import { authenticate, authorizeRoles } from '../middleware/auth.js';
 
 const router = Router();
 
 // ==========================================
-// PUBLIC ROUTES (Customers & Visitors)
+// PUBLIC & ADMIN GET ROUTES
 // ==========================================
+// 1. Specific/Admin Routes MUST go first!
+router.get('/admin/all', getAdminProducts);
+router.get('/admin/:id', getAdminProductById);
 
-// Get all published products (supports search & filter queries)
+// 2. General Routes go second
 router.get('/', getPublishedProducts);
 
-// Get a specific product by ID
+// 3. Dynamic ID Routes MUST go last! (Otherwise they intercept the routes above)
 router.get('/:id', getProductById);
 
 
 // ==========================================
-// ADMIN ONLY ROUTES
+// ADMIN ONLY MUTATION ROUTES
 // ==========================================
-
-// Apply authentication and admin role check to ALL routes below this line
 router.use(authenticate, authorizeRoles('admin'));
 
-// Get all products (including unpublished) for the admin dashboard
-router.get('/admin/all', getAdminProducts);
-
-// Create a new product
 router.post('/', createProduct);
-
-// Update an existing product
 router.put('/:id', updateProduct);
-
-// Delete a product
 router.delete('/:id', deleteProduct);
 
 export default router;

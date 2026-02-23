@@ -58,17 +58,6 @@ export const deleteProduct = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-export const getAdminProducts = async (req: Request, res: Response): Promise<void> => {
-  try {
-    // Admins see all products, regardless of published status
-    const products = await Product.find({}).sort({ createdAt: -1 });
-    res.json({ products });
-  } catch (error) {
-    const err = error as Error;
-    res.status(500).json({ message: err.message });
-  }
-};
-
 // ==========================================
 // PUBLIC / CUSTOMER CONTROLLERS
 // ==========================================
@@ -118,5 +107,31 @@ export const getProductById = async (req: Request, res: Response): Promise<void>
   } catch (error) {
     const err = error as Error;
     res.status(500).json({ message: err.message });
+  }
+};
+
+export const getAdminProductById = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const product = await Product.findById(req.params.id).populate('productCategory', 'name');
+    if (!product) {
+      res.status(404).json({ message: 'Product not found' });
+      return;
+    }
+    res.json({ product });
+  } catch (error) {
+    res.status(500).json({ message: (error as Error).message });
+  }
+};
+
+export const getAdminProducts = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // We use .populate() so the table shows the Category Name, not just the random ID
+    const products = await Product.find({})
+      .populate('productCategory', 'name')
+      .sort({ createdAt: -1 }); // Newest products first
+      
+    res.json({ products });
+  } catch (error) {
+    res.status(500).json({ message: (error as Error).message });
   }
 };

@@ -2,7 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IProduct extends Document {
   productName: string;
-  productCategory: string;
+  productCategory: mongoose.Types.ObjectId;
   productType: string;
   material: string;
   colors: string[];
@@ -25,9 +25,9 @@ const productSchema = new Schema<IProduct>(
       trim: true,
     },
     productCategory: {
-      type: String,
+      type: Schema.Types.ObjectId,
+      ref: 'Category',
       required: [true, 'Please provide a product category'],
-      enum: ['men', 'women', 'children', 'unisex'],
     },
     productType: {
       type: String,
