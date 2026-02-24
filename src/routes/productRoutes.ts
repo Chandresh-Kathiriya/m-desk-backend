@@ -7,6 +7,8 @@ import {
   getPublishedProducts,
   getProductById,
   getAdminProductById,
+  getPublicProducts,
+  getPublicProductById
 } from '../controllers/productController.js';
 import { authenticate, authorizeRoles } from '../middleware/auth.js';
 
@@ -18,6 +20,9 @@ const router = Router();
 // 1. Specific/Admin Routes MUST go first!
 router.get('/admin/all', getAdminProducts);
 router.get('/admin/:id', getAdminProductById);
+
+router.get('/public', getPublicProducts);
+router.get('/public/:id', getPublicProductById);
 
 // 2. General Routes go second
 router.get('/', getPublishedProducts);

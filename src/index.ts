@@ -9,6 +9,13 @@ import authRoutes from './routes/authRoutes.js';
 import productRoutes from './routes/productRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import brandRoutes from './routes/brandRoutes.js';
+import colorRoutes from './routes/colorRoutes.js';
+import sizeRoutes from './routes/sizeRoutes.js';
+import styleRoutes from './routes/styleRoutes.js';
+import categoryRoutes from './routes/categoryRoutes.js';
+import typeRoutes from './routes/typeRoutes.js';
+import inventoryRoutes from './routes/inventoryRoutes.js';
 
 
 const app: Application = express();
@@ -25,6 +32,13 @@ app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/brands', brandRoutes);
+app.use('/api/colors', colorRoutes);
+app.use('/api/sizes', sizeRoutes);
+app.use('/api/styles', styleRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/types', typeRoutes);
+app.use('/api/inventory', inventoryRoutes);
 
 // Default health check route
 app.get('/', (req: Request, res: Response) => {

@@ -7,6 +7,9 @@ import Product from '../models/Product.js';
 
 export const createProduct = async (req: Request, res: Response): Promise<void> => {
   try {
+    // --- ADD THIS LOG TO SPY ON THE INCOMING DATA ---
+    console.log("INCOMING VARIANTS FROM FRONTEND:", JSON.stringify(req.body.variants, null, 2));
+
     const product = await Product.create(req.body);
     res.status(201).json({
       message: 'Product created successfully',
@@ -112,7 +115,13 @@ export const getProductById = async (req: Request, res: Response): Promise<void>
 
 export const getAdminProductById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const product = await Product.findById(req.params.id).populate('productCategory', 'name');
+    const product = await Product.findById(req.params.id)
+      .populate('productCategory', 'name')
+      .populate('brand', 'name') // NEW
+      .populate('style', 'name') // NEW
+      .populate('colors', 'name hexCode') // NEW
+      .populate('sizes', 'name code'); // NEW
+
     if (!product) {
       res.status(404).json({ message: 'Product not found' });
       return;
@@ -125,13 +134,56 @@ export const getAdminProductById = async (req: Request, res: Response): Promise<
 
 export const getAdminProducts = async (req: Request, res: Response): Promise<void> => {
   try {
-    // We use .populate() so the table shows the Category Name, not just the random ID
     const products = await Product.find({})
       .populate('productCategory', 'name')
-      .sort({ createdAt: -1 }); // Newest products first
+      .populate('brand', 'name') // NEW
+      .sort({ createdAt: -1 }); 
       
     res.json({ products });
   } catch (error) {
     res.status(500).json({ message: (error as Error).message });
+  }
+};
+
+// Fetch all PUBLISHED and IN-STOCK products for the public storefront
+export const getPublicProducts = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // 1. Check if the DB is connected and has any products at all
+    const totalProducts = await Product.countDocuments();
+
+    // 2. Fetch one raw product to inspect its EXACT data types
+    const sampleProduct = await Product.findOne({ productName: "Test New 123456" }); // Looking for your specific test product
+    
+    // 3. Run the strict query
+    const products = await Product.find({ 
+      published: true,
+      variants: { $elemMatch: { stock: { $gt: 0 } } } 
+    })
+      .populate('brand', 'name')
+      .populate('productCategory', 'name')
+      .populate('style', 'name')
+      .sort({ createdAt: -1 }); 
+      
+    res.json({ products });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Fetch a single PUBLISHED product for the Product Details Page
+export const getPublicProductById = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const product = await Product.findOne({ _id: req.params.id, published: true })
+      .populate('brand', 'name')
+      .populate('productCategory', 'name')
+      .populate('style', 'name');
+
+    if (!product) {
+      res.status(404).json({ message: 'Product not found or unavailable' });
+      return;
+    }
+    res.json({ product });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
   }
 };
