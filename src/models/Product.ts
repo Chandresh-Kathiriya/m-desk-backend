@@ -1,4 +1,12 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Document, Schema } from 'mongoose';
+
+// --- NEW: Define the Variant Sub-Schema ---
+export interface IVariant {
+  sku: string;
+  color: string;
+  size: string;
+  stock: number;
+}
 
 export interface IProduct extends Document {
   productName: string;
@@ -6,92 +14,43 @@ export interface IProduct extends Document {
   productType: string;
   material: string;
   colors: string[];
-  currentStock: number;
+  sizes: string[]; // <-- NEW: Array of available sizes
+  variants: IVariant[]; // <-- NEW: The matrix of SKUs
   salesPrice: number;
   salesTax: number;
   purchasePrice: number;
   purchaseTax: number;
   published: boolean;
   images: string[];
-  createdAt: Date;
-  updatedAt: Date;
 }
+
+const variantSchema = new Schema<IVariant>({
+  sku: { type: String, required: true, unique: true },
+  color: { type: String, required: true },
+  size: { type: String, required: true },
+  stock: { type: Number, default: 0 }, // Driven by Purchase/Sales Orders!
+});
 
 const productSchema = new Schema<IProduct>(
   {
-    productName: {
-      type: String,
-      required: [true, 'Please provide a product name'],
-      trim: true,
-    },
-    productCategory: {
-      type: Schema.Types.ObjectId,
-      ref: 'Category',
-      required: [true, 'Please provide a product category'],
-    },
-    productType: {
-      type: String,
-      required: [true, 'Please provide a product type'],
-      enum: ['shirt', 'pant', 't-shirt', 'kurta', 'dress', 'shorts', 'jacket', 'sweater'],
-    },
-    material: {
-      type: String,
-      required: [true, 'Please provide material'],
-      enum: ['cotton', 'nylon', 'polyester', 'silk', 'wool', 'linen', 'blend'],
-    },
-    colors: {
-      type: [String],
-      required: [true, 'Please provide at least one color'],
-      validate: {
-        validator: (v: string[]) => v.length > 0,
-        message: 'At least one color is required',
-      },
-    },
-    currentStock: {
-      type: Number,
-      required: [true, 'Please provide current stock'],
-      default: 0,
-      min: 0,
-    },
-    salesPrice: {
-      type: Number,
-      required: [true, 'Please provide sales price'],
-      min: 0,
-    },
-    salesTax: {
-      type: Number,
-      required: [true, 'Please provide sales tax'],
-      default: 0,
-      min: 0,
-      max: 100,
-    },
-    purchasePrice: {
-      type: Number,
-      required: [true, 'Please provide purchase price'],
-      min: 0,
-    },
-    purchaseTax: {
-      type: Number,
-      required: [true, 'Please provide purchase tax'],
-      default: 0,
-      min: 0,
-      max: 100,
-    },
-    published: {
-      type: Boolean,
-      default: false,
-    },
-    images: {
-      type: [String],
-      default: [],
-    },
+    productName: { type: String, required: true },
+    productCategory: { type: Schema.Types.ObjectId, ref: 'Category', required: true },
+    productType: { type: String, required: true },
+    material: { type: String, required: true },
+    colors: [{ type: String }],
+    sizes: [{ type: String }], // e.g., ['S', 'M', 'L', 'XL']
+    variants: [variantSchema], // Embed the variants inside the product
+    salesPrice: { type: Number, required: true },
+    salesTax: { type: Number, required: true },
+    purchasePrice: { type: Number, required: true },
+    purchaseTax: { type: Number, required: true },
+    published: { type: Boolean, default: false },
+    images: [{ type: String }],
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-productSchema.index({ productName: 'text', productCategory: 1, productType: 1 });
-productSchema.index({ published: 1 });
+// Optional: Add a text index for easy searching
+productSchema.index({ productName: 'text', productType: 'text' });
 
 export default mongoose.model<IProduct>('Product', productSchema);
