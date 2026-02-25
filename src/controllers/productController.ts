@@ -7,9 +7,6 @@ import Product from '../models/Product.js';
 
 export const createProduct = async (req: Request, res: Response): Promise<void> => {
   try {
-    // --- ADD THIS LOG TO SPY ON THE INCOMING DATA ---
-    console.log("INCOMING VARIANTS FROM FRONTEND:", JSON.stringify(req.body.variants, null, 2));
-
     const product = await Product.create(req.body);
     res.status(201).json({
       message: 'Product created successfully',
@@ -147,13 +144,7 @@ export const getAdminProducts = async (req: Request, res: Response): Promise<voi
 
 // Fetch all PUBLISHED and IN-STOCK products for the public storefront
 export const getPublicProducts = async (req: Request, res: Response): Promise<void> => {
-  try {
-    // 1. Check if the DB is connected and has any products at all
-    const totalProducts = await Product.countDocuments();
-
-    // 2. Fetch one raw product to inspect its EXACT data types
-    const sampleProduct = await Product.findOne({ productName: "Test New 123456" }); // Looking for your specific test product
-    
+  try {    
     // 3. Run the strict query
     const products = await Product.find({ 
       published: true,

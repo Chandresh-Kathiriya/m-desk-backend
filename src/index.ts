@@ -13,7 +13,6 @@ import brandRoutes from './routes/brandRoutes.js';
 import colorRoutes from './routes/colorRoutes.js';
 import sizeRoutes from './routes/sizeRoutes.js';
 import styleRoutes from './routes/styleRoutes.js';
-import categoryRoutes from './routes/categoryRoutes.js';
 import typeRoutes from './routes/typeRoutes.js';
 import inventoryRoutes from './routes/inventoryRoutes.js';
 
