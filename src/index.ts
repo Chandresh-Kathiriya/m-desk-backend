@@ -16,6 +16,8 @@ import styleRoutes from './routes/styleRoutes.js';
 import typeRoutes from './routes/typeRoutes.js';
 import inventoryRoutes from './routes/inventoryRoutes.js';
 import cartRoutes from './routes/cartRoutes.js';
+import orderRoutes from './routes/orderRoutes.js';
+import couponRoutes from './routes/couponRoutes.js';
 
 const app: Application = express();
 
@@ -39,6 +41,8 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/types', typeRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/cart', cartRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/coupons', couponRoutes);
 
 // Default health check route
 app.get('/', (req: Request, res: Response) => {

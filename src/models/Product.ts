@@ -12,6 +12,37 @@ export interface IVariant {
   purchaseTax: number;
 }
 
+export interface IReview extends Document {
+  user: mongoose.Types.ObjectId;
+  name: string;
+  rating: number;
+  comment: string;
+  isVerifiedPurchase: boolean; 
+  helpfulVotes: number; 
+  unhelpfulVotes: number;
+  votedUsers: mongoose.Types.ObjectId[];
+  isEdited: boolean;
+  reportCount: number;
+}
+
+const reviewSchema = new Schema<IReview>(
+  {
+    user: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
+    name: { type: String, required: true },
+    rating: { type: Number, required: true },
+    comment: { type: String, required: true },
+    
+    // --- NEW REVIEW FEATURES ---
+    isVerifiedPurchase: { type: Boolean, default: false },
+    helpfulVotes: { type: Number, default: 0 },
+    unhelpfulVotes: { type: Number, default: 0 },
+    votedUsers: [{ type: Schema.Types.ObjectId, ref: 'User' }], 
+    isEdited: { type: Boolean, default: false },
+    reportCount: { type: Number, default: 0 },
+  },
+  { timestamps: true }
+);
+
 // --- Define the main Product Interface ---
 export interface IProduct extends Document {
   productName: string;
@@ -24,7 +55,10 @@ export interface IProduct extends Document {
   sizes: mongoose.Types.ObjectId[]; 
   variants: IVariant[]; 
   published: boolean;
-  images: { url: string; color: string }[]; // Updated to match the object structure
+  images: { url: string; color: string }[]; 
+  reviews: IReview[];
+  rating: number;
+  numReviews: number;
 }
 
 const variantSchema = new Schema<IVariant>({
@@ -61,6 +95,9 @@ const productSchema = new Schema<IProduct>(
       url: { type: String, required: true },
       color: { type: String } 
     }],
+    reviews: [reviewSchema],
+    rating: { type: Number, required: true, default: 0 },
+    numReviews: { type: Number, required: true, default: 0 },
   },
   { timestamps: true }
 );

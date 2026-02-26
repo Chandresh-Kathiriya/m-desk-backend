@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import Product from '../models/Product.js';
+import User from '../models/User.js';
+import Order from '../models/Order.js';
 
 // ==========================================
 // ADMIN ONLY CONTROLLERS
@@ -177,4 +179,125 @@ export const getPublicProductById = async (req: Request, res: Response): Promise
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
+};
+
+export const createProductReview = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { rating, comment } = req.body;
+    const productId = req.params.id;
+    const userId = (req as any).user.userId || (req as any).user._id || (req as any).user.id;
+
+    const product = await Product.findById(productId);
+    if (!product) { res.status(404).json({ message: 'Product not found' }); return; }
+
+    // 1. GUARDRAIL: Only allow review if they actually bought it and PAID for it!
+    const hasPurchased = await Order.findOne({
+      user: userId,
+      isPaid: true,
+      orderItems: { $elemMatch: { product: productId } } // <-- THE FIX: Strict array matching
+    });
+
+    if (!hasPurchased) {
+      res.status(400).json({ message: 'Only verified buyers can review this product.' });
+      return;
+    }
+
+    // 2. Check if already reviewed
+    const alreadyReviewed = product.reviews.find((r) => r.user.toString() === userId.toString());
+    if (alreadyReviewed) {
+      res.status(400).json({ message: 'You have already reviewed this product' });
+      return;
+    }
+
+    // 3. Create Review with Verified Badge
+    const review = {
+      user: userId,
+      name: (req as any).user.name,
+      rating: Number(rating),
+      comment,
+      isVerifiedPurchase: true, // They passed the check!
+    };
+
+    product.reviews.push(review as any);
+    product.numReviews = product.reviews.length;
+    product.rating = product.reviews.reduce((acc, item) => item.rating + acc, 0) / product.reviews.length;
+
+    await product.save();
+    res.status(201).json({ message: 'Verified review added successfully' });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const updateProductReview = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { rating, comment } = req.body;
+    const product = await Product.findById(req.params.id);
+    const userId = (req as any).user._id || (req as any).user.userId || (req as any).user.id;
+
+    if (product) {
+      const review = (product.reviews as any).id(req.params.reviewId);
+      
+      if (!review) { res.status(404).json({ message: 'Review not found' }); return; }
+      
+      // Ensure the user owns this review
+      if (review.user.toString() !== userId.toString()) {
+        res.status(401).json({ message: 'User not authorized to edit this review' }); return;
+      }
+
+      review.rating = Number(rating) || review.rating;
+      review.comment = comment || review.comment;
+      review.isEdited = true; // Flag as edited!
+
+      // Recalculate average rating
+      product.rating = product.reviews.reduce((acc, item) => item.rating + acc, 0) / product.reviews.length;
+
+      await product.save();
+      res.status(200).json({ message: 'Review updated successfully' });
+    }
+  } catch (error: any) { res.status(500).json({ message: error.message }); }
+};
+
+export const voteReview = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { voteType } = req.body; // 'helpful' or 'unhelpful'
+    const product = await Product.findById(req.params.id);
+    const userId = (req as any).user._id || (req as any).user.userId || (req as any).user.id;
+
+    if (product) {
+      const review = (product.reviews as any).id(req.params.reviewId);
+      if (!review) { res.status(404).json({ message: 'Review not found' }); return; }
+
+      // Prevent voting on own review or voting twice
+      if (review.user.toString() === userId.toString()) {
+        res.status(400).json({ message: 'You cannot vote on your own review' }); return;
+      }
+      if (review.votedUsers.includes(userId)) {
+        res.status(400).json({ message: 'You have already voted on this review' }); return;
+      }
+
+      if (voteType === 'helpful') review.helpfulVotes += 1;
+      if (voteType === 'unhelpful') review.unhelpfulVotes += 1;
+      
+      review.votedUsers.push(userId); // Log the user so they can't vote again
+
+      await product.save();
+      res.status(200).json({ message: 'Vote recorded' });
+    }
+  } catch (error: any) { res.status(500).json({ message: error.message }); }
+};
+
+export const reportReview = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (product) {
+      const review = (product.reviews as any).id(req.params.reviewId);
+      if (!review) { res.status(404).json({ message: 'Review not found' }); return; }
+
+      review.reportCount += 1;
+
+      await product.save();
+      res.status(200).json({ message: 'Review reported to admins' });
+    }
+  } catch (error: any) { res.status(500).json({ message: error.message }); }
 };
