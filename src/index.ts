@@ -22,7 +22,13 @@ import couponRoutes from './routes/couponRoutes.js';
 const app: Application = express();
 
 // Middleware
-app.use(cors()); // Allows your Vite frontend to make requests to this API
+app.use(cors({
+  origin: [
+    'http://localhost:5173', // Keep local dev working
+    'https://m-desk.netlify.app' // Add your exact Netlify URL!
+  ],
+  credentials: true 
+}));
 app.use(express.json()); // Parses incoming JSON payloads
 
 // Connect to MongoDB
