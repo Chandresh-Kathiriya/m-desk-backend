@@ -10,20 +10,29 @@ dotenv.config();
 // Initialize Stripe with your Secret Key
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
+// @desc    Get Stripe Client Secret (NO ORDER CREATED YET)
+// @route   POST /api/orders/stripe-intent
+export const createStripeIntent = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { totalPrice } = req.body;
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: Math.round(totalPrice * 100),
+            currency: 'inr',
+            receipt_email: (req as any).user.email,
+            automatic_payment_methods: { enabled: true },
+        });
 
-// @desc    Create new order & get Stripe Client Secret
+        res.status(200).json({ clientSecret: paymentIntent.client_secret });
+    } catch (error: any) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Create new order & deduct stock (RUNS AFTER STRIPE SUCCESS)
 // @route   POST /api/orders
-// @access  Private
 export const addOrderItems = async (req: Request, res: Response): Promise<void> => {
     try {
-        const {
-            orderItems,
-            shippingAddress,
-            paymentMethod,
-            itemsPrice,
-            shippingPrice,
-            totalPrice,
-        } = req.body;
+        const { orderItems, shippingAddress, paymentMethod, itemsPrice, shippingPrice, totalPrice, paymentResult } = req.body;
 
         if (orderItems && orderItems.length === 0) {
             res.status(400).json({ message: 'No order items' });
@@ -32,54 +41,53 @@ export const addOrderItems = async (req: Request, res: Response): Promise<void> 
 
         const userId = (req as any).user.userId || (req as any).user._id || (req as any).user.id;
 
-        // 1. Create the Order in MongoDB (Starts as isPaid: false)
+        // --- NEW: Calculate Total Cost & Enrich Items ---
+        let calculatedTotalCost = 0;
+        const enrichedOrderItems = [];
+
+        for (const item of orderItems) {
+            // Find the product and the specific variant to get the actual cost right now
+            const product = await Product.findById(item.product);
+            const variant = product?.variants.find(v => v.sku === item.sku);
+
+            const itemCost = variant ? variant.purchasePrice : 0;
+            const itemTax = variant ? variant.purchaseTax : 0;
+            
+            // Add cost + tax, multiplied by quantity
+            calculatedTotalCost += (itemCost + (itemCost * (itemTax / 100))) * item.qty;
+
+            enrichedOrderItems.push({
+                ...item,
+                purchasePrice: itemCost,
+                purchaseTax: itemTax
+            });
+            
+            // Deduct Stock
+            await Product.updateOne(
+                { _id: new mongoose.Types.ObjectId(item.product), "variants.sku": item.sku },
+                { $inc: { "variants.$.stock": -item.qty } }
+            );
+        }
+
+        // 1. Create the Order with enriched items and totalCost
         const order = new Order({
             user: userId,
-            orderItems,
-            shippingAddress,
-            paymentMethod,
-            itemsPrice,
-            shippingPrice,
-            totalPrice,
+            orderItems: enrichedOrderItems, 
+            shippingAddress, 
+            paymentMethod, 
+            itemsPrice, 
+            shippingPrice, 
+            totalPrice, 
+            totalCost: calculatedTotalCost, // <--- NEW
+            isPaid: true, 
+            paidAt: new Date(),
+            paymentResult 
         });
 
         const createdOrder = await order.save();
 
-        for (const item of orderItems) {
-            const updateResult = await Product.updateOne(
-                {
-                    _id: new mongoose.Types.ObjectId(item.product), // Strictly cast to ObjectId
-                    "variants.sku": item.sku // <-- THE FIX: Changed to 'variants'
-                },
-                {
-                    $inc: { "variants.$.stock": -item.qty } // <-- THE FIX: Changed to 'variants'
-                }
-            );
-        }
-
-        // 2. Talk to Stripe to create a Payment Intent
-        // Stripe requires the amount to be in the smallest currency unit (e.g., paise for INR, cents for USD)
-        // So if the total is ₹105.00, we send 10500 to Stripe.
-        const paymentIntent = await stripe.paymentIntents.create({
-            amount: Math.round(totalPrice * 100),
-            currency: 'inr',
-            receipt_email: (req as any).user.email, // <-- NEW: This puts the email in your Stripe Dashboard!
-            automatic_payment_methods: {
-                enabled: true,
-            },
-            metadata: {
-                orderId: createdOrder._id.toString(),
-            }
-        });
-
-        // 3. Send both the saved order AND the Stripe Secret back to React
-        res.status(201).json({
-            order: createdOrder,
-            clientSecret: paymentIntent.client_secret,
-        });
-
+        res.status(201).json(createdOrder);
     } catch (error: any) {
-        console.error("🔥 ERROR CREATING ORDER/STRIPE INTENT:", error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -87,10 +95,7 @@ export const addOrderItems = async (req: Request, res: Response): Promise<void> 
 export const getMyOrders = async (req: Request, res: Response): Promise<void> => {
     try {
         const userId = (req as any).user.userId || (req as any).user._id || (req as any).user.id;
-
-        // Find all orders for this user, sorted by newest first
         const orders = await Order.find({ user: userId }).sort({ createdAt: -1 });
-
         res.status(200).json(orders);
     } catch (error: any) {
         res.status(500).json({ message: error.message });
@@ -99,8 +104,7 @@ export const getMyOrders = async (req: Request, res: Response): Promise<void> =>
 
 export const getOrderById = async (req: Request, res: Response): Promise<void> => {
     try {
-        // We use .populate() to attach the user's name and email to the order data!
-        const order = await Order.findById(req.params.id).populate('user', 'name email');
+        const order = await Order.findById(req.params.id).populate('user', 'name email mobile');
 
         if (!order) {
             res.status(404).json({ message: 'Order not found' });
@@ -115,8 +119,8 @@ export const getOrderById = async (req: Request, res: Response): Promise<void> =
 
 export const getOrders = async (req: Request, res: Response): Promise<void> => {
     try {
-        // Fetch every order, sorted by newest first
-        const orders = await Order.find({}).populate('user', 'id name email').sort({ createdAt: -1 });
+        // --- NEW: Added 'mobile' to the populate list! ---
+        const orders = await Order.find({}).populate('user', 'id name email mobile').sort({ createdAt: -1 });
         res.status(200).json(orders);
     } catch (error: any) {
         res.status(500).json({ message: error.message });
@@ -129,7 +133,7 @@ export const updateOrderToDelivered = async (req: Request, res: Response): Promi
 
         if (order) {
             order.isDelivered = true;
-            order.deliveredAt = new Date(); // Stamps the exact current date/time!
+            order.deliveredAt = new Date(); 
 
             const updatedOrder = await order.save();
             res.status(200).json(updatedOrder);
@@ -144,17 +148,13 @@ export const updateOrderToDelivered = async (req: Request, res: Response): Promi
 export const verifyPayment = async (req: Request, res: Response): Promise<void> => {
     try {
         const { paymentIntentId } = req.body;
-
-        // 1. Ask Stripe directly for the official status of this payment
         const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
 
-        // 2. If Stripe says it's successful, find the order using the metadata we attached earlier!
         if (intent.status === 'succeeded') {
             const orderId = intent.metadata.orderId;
             const order = await Order.findById(orderId);
 
             if (order && !order.isPaid) {
-                // 3. Mark the database as Officially Paid!
                 order.isPaid = true;
                 order.paidAt = new Date();
                 order.paymentResult = {

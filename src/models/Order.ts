@@ -19,6 +19,7 @@ export interface IOrder extends Document {
   itemsPrice: number;
   shippingPrice: number;
   totalPrice: number;
+  totalCost: number; // <--- NEW: Total cost of goods for profit calculation
   isPaid: boolean;
   paidAt?: Date;
   isDelivered: boolean;
@@ -38,6 +39,9 @@ const orderSchema = new Schema<IOrder>(
         qty: { type: Number, required: true },
         image: { type: String, required: true },
         price: { type: Number, required: true },
+        // --- NEW: Capture cost at the exact time of sale ---
+        purchasePrice: { type: Number, required: true, default: 0 },
+        purchaseTax: { type: Number, required: true, default: 0 },
         product: {
           type: Schema.Types.ObjectId,
           required: true,
@@ -79,10 +83,15 @@ const orderSchema = new Schema<IOrder>(
       required: true,
       default: 0.0,
     },
+    totalCost: {
+      type: Number,
+      required: true,
+      default: 0.0, // <--- NEW: Saved for the whole order
+    },
     isPaid: {
       type: Boolean,
       required: true,
-      default: false, // Starts as false until Stripe confirms the dummy payment!
+      default: false,
     },
     paidAt: {
       type: Date,

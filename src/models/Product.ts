@@ -55,7 +55,13 @@ export interface IProduct extends Document {
   sizes: mongoose.Types.ObjectId[]; 
   variants: IVariant[]; 
   published: boolean;
-  images: { url: string; color: string }[]; 
+  images: [
+    {
+      url: { type: String, required: true },
+      color: { type: String, required: true },
+      view: { type: String } 
+    }
+  ],
   reviews: IReview[];
   rating: number;
   numReviews: number;

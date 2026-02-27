@@ -1,9 +1,8 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import multer from 'multer';
 import { v2 as cloudinary } from 'cloudinary';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import dotenv from 'dotenv';
-// --- NEW: Import your JWT Auth Middleware ---
 import { authenticate, authorizeRoles } from '../middleware/auth.js'; 
 
 dotenv.config();
@@ -16,11 +15,7 @@ cloudinary.config({
 
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
-  // Make sure to type 'req' as 'any' so TypeScript knows 'req.user' exists from the middleware
   params: async (req: any, file) => { 
-    
-    // --- NEW: Grab the highly secure ID from the verified JWT token! ---
-    // If the token is fake, the middleware blocks it before this code even runs.
     const secureUserId = req.user 
       ? String(req.user._id || req.user.userId || req.user.id || 'UNKNOWN_USER') 
       : 'UNKNOWN_USER';
@@ -48,18 +43,31 @@ const upload = multer({
 
 const router = express.Router();
 
-// --- NEW: Add 'authenticate' and 'authorizeRoles' before 'upload.single' ---
-// This guarantees only logged-in Admins with a valid JWT token can reach the upload logic.
-router.post('/', authenticate, authorizeRoles('admin'), upload.single('image'), (req, res) => {
-  
-  if (!req.file) {
-    return res.status(400).json({ message: 'No image uploaded' });
+// --- THE FIX: Change upload.array to upload.any() ---
+// This forces Multer to accept the files no matter what the frontend named them!
+router.post('/', authenticate, authorizeRoles('admin'), upload.any(), (req: Request, res: Response): void => {
+  try {
+    // With upload.any(), the files are still cleanly placed into req.files
+    const files = req.files as Express.Multer.File[];
+    
+    if (!files || files.length === 0) {
+      res.status(400).json({ message: 'No images provided' });
+      return;
+    }
+
+    const imageUrls: string[] = [];
+
+    // Since we are using CloudinaryStorage, the files are already uploaded to Cloudinary
+    // by the time the code reaches this loop! The secure URL is in file.path.
+    for (const file of files) {
+      imageUrls.push(file.path); 
+    }
+
+    // Send the array of Cloudinary URLs back to the Redux action
+    res.status(200).json({ imageUrls, message: 'Images uploaded successfully' });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
   }
-  
-  res.json({
-    message: 'Image Uploaded Successfully',
-    imageUrl: req.file.path, 
-  });
 });
 
 export default router;
