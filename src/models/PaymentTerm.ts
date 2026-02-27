@@ -49,16 +49,16 @@ const paymentTermSchema = new Schema<IPaymentTerm>(
   }
 );
 
-paymentTermSchema.pre('save', function (next) {
+// --- THE FIX: Changed from 'save' to 'validate' ---
+paymentTermSchema.pre('validate', function (next) {
   if (this.name === 'Immediate Payment') {
     this.earlyPaymentDiscount = false;
     this.discountPercentage = 0;
     this.discountDays = 0;
     this.examplePreview = 'Payment Terms: Immediate Payment';
   } else if (this.earlyPaymentDiscount) {
+    // Determine preview dates
     const daysText = `${this.discountDays} day${this.discountDays > 1 ? 's' : ''}`;
-    const dueDateExample = new Date();
-    dueDateExample.setDate(dueDateExample.getDate() + parseInt(this.name.split(' ')[0]) || 30);
     const earlyPayDate = new Date();
     earlyPayDate.setDate(earlyPayDate.getDate() + this.discountDays);
 

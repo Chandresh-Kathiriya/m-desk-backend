@@ -2,7 +2,8 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IDiscountOffer extends Document {
   name: string;
-  discountPercentage: number;
+  discountType: 'percentage' | 'flat';
+  discountValue: number;
   startDate: Date;
   endDate: Date;
   availableOn: 'sales' | 'website' | 'both';
@@ -19,7 +20,12 @@ const discountOfferSchema = new Schema<IDiscountOffer>(
       unique: true,
       trim: true,
     },
-    discountPercentage: {
+    discountType: {
+      type: String,
+      enum: ['percentage', 'flat'],
+      default: 'percentage'
+    },
+    discountValue: {
       type: Number,
       required: [true, 'Please provide a discount percentage'],
       min: 0,

@@ -18,6 +18,9 @@ import inventoryRoutes from './routes/inventoryRoutes.js';
 import cartRoutes from './routes/cartRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import couponRoutes from './routes/couponRoutes.js';
+import paymentTermRoutes from './routes/paymentTermRoutes.js';
+import discountRoutes from './routes/discountRoutes.js';
+import contactRoutes from './routes/contactRoutes.js';
 
 const app: Application = express();
 
@@ -49,6 +52,9 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/coupons', couponRoutes);
+app.use('/api/payment-terms', paymentTermRoutes);
+app.use('/api/discounts', discountRoutes);
+app.use('/api/contacts', contactRoutes);
 
 // Default health check route
 app.get('/', (req: Request, res: Response) => {

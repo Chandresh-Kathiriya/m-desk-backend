@@ -19,7 +19,9 @@ export interface IOrder extends Document {
   itemsPrice: number;
   shippingPrice: number;
   totalPrice: number;
-  totalCost: number; // <--- NEW: Total cost of goods for profit calculation
+  totalCost: number;
+  paymentTerm: mongoose.Types.ObjectId; 
+  paymentTermsPreview: string;
   isPaid: boolean;
   paidAt?: Date;
   isDelivered: boolean;
@@ -87,6 +89,15 @@ const orderSchema = new Schema<IOrder>(
       type: Number,
       required: true,
       default: 0.0, // <--- NEW: Saved for the whole order
+    },
+    paymentTerm: {
+      type: Schema.Types.ObjectId,
+      ref: 'PaymentTerm',
+      required: true
+    },
+    paymentTermsPreview: {
+      type: String,
+      required: true
     },
     isPaid: {
       type: Boolean,

@@ -1,21 +1,25 @@
 import { Request, Response } from 'express';
 import Coupon from '../models/Coupon.js';
 import Order from '../models/Order.js';
-import Product from '../models/Product.js'; // <-- Added Product model import
+import Product from '../models/Product.js';
+import Contact from '../models/Contact.js';
 
 // @desc    Create a new advanced coupon (Admin)
 // @route   POST /api/coupons
 export const createCoupon = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { code, discountType, discountValue, minCartValue, applicableRules, isFirstTimeUserOnly, usageLimit, expiryDate } = req.body;
+        const { code, discountType, discountValue, minCartValue, applicableRules, isFirstTimeUserOnly, usageLimit, expiryDate, contact, discountOffer } = req.body;
 
         const couponExists = await Coupon.findOne({ code: code.toUpperCase() });
         if (couponExists) { res.status(400).json({ message: 'Coupon code already exists' }); return; }
 
         const coupon = await Coupon.create({
-            code, discountType, discountValue, minCartValue,
+            discountType, discountValue, minCartValue,
             applicableRules: applicableRules || [],
-            isFirstTimeUserOnly, usageLimit, expiryDate
+            isFirstTimeUserOnly, usageLimit, expiryDate,
+            code: code.toUpperCase(),
+            contact: contact || null,
+            discountOffer
         });
 
         res.status(201).json(coupon);
@@ -39,42 +43,60 @@ export const getCoupons = async (req: Request, res: Response): Promise<void> => 
 // @route   POST /api/coupons/validate
 export const validateCoupon = async (req: Request, res: Response): Promise<void> => {
     try {
-        // 1. Receive cartItems from frontend instead of just the total
         const { code, cartItems } = req.body;
         const userId = (req as any).user?.userId || (req as any).user?._id || (req as any).user?.id;
 
-        const coupon = await Coupon.findOne({ code: code.toUpperCase() });
+        if (!code || !cartItems || cartItems.length === 0) {
+            res.status(400).json({ message: 'Coupon code and cart items are required' });
+            return;
+        }
 
-        // 2. Basic Validity Checks
-        if (!coupon) { res.status(404).json({ message: 'Invalid coupon code' }); return; }
+        // Clean the code string to prevent whitespace mismatches
+        const cleanCode = code.trim().toUpperCase();
+
+        // Fetch coupon AND populate the offer
+        const coupon = await Coupon.findOne({ code: cleanCode }).populate('discountOffer');
+
+        if (!coupon) {
+            res.status(404).json({ message: 'Invalid coupon code' });
+            return;
+        }
+
         if (!coupon.isActive) { res.status(400).json({ message: 'This coupon is no longer active' }); return; }
-        if (new Date(coupon.expiryDate) < new Date()) { res.status(400).json({ message: 'This coupon has expired' }); return; }
+        if (new Date(coupon.expirationDate) < new Date()) { res.status(400).json({ message: 'This coupon has expired' }); return; }
         if (coupon.usedCount >= coupon.usageLimit) { res.status(400).json({ message: 'This coupon has reached its usage limit' }); return; }
 
-        // 3. Fetch real products from DB to prevent frontend spoofing
+        // Fetch products from DB to verify real prices
         const productIds = cartItems.map((item: any) => item.product || item._id);
+
         const dbProducts = await Product.find({ _id: { $in: productIds } });
+
+        if (dbProducts.length === 0) {
+            res.status(400).json({ message: 'Cart items could not be verified.' });
+            return;
+        }
 
         let cartTotal = 0;
         let eligibleSubtotal = 0;
 
-        // 4. Calculate eligible subtotal by checking rules
-        cartItems.forEach((item: any) => {
-            // FIX: Cast product to 'any' to bypass strict Mongoose document typing
+        cartItems.forEach((item: any, index: number) => {
             const product = dbProducts.find((p) => p._id.toString() === (item.product || item._id).toString()) as any;
 
             if (product) {
-                const itemTotal = product.price * item.qty;
+                // FIX: Fallback to the frontend item's price/name if the DB product doesn't have them at the top level
+                const price = Number(product.price) || Number(item.price) || 0;
+                const name = product.name || item.name || 'Unknown Product';
+                const qty = Number(item.qty) || 1;
+
+                const itemTotal = price * qty;
+
                 cartTotal += itemTotal;
 
-                // If no rules are set, ALL products apply
+                // Rule evaluation
                 if (!coupon.applicableRules || coupon.applicableRules.length === 0) {
                     eligibleSubtotal += itemTotal;
                 } else {
-                    // Convert rule IDs to strings for comparison
                     const rules = coupon.applicableRules.map((id: any) => id.toString());
-
-                    // FIX: Add '|| ""' so it always passes a string to .includes(), never undefined
                     const isEligible =
                         rules.includes(product.category?.toString() || "") ||
                         rules.includes(product.brand?.toString() || "") ||
@@ -88,7 +110,6 @@ export const validateCoupon = async (req: Request, res: Response): Promise<void>
             }
         });
 
-        // 5. Guardrails based on calculated totals
         if (eligibleSubtotal === 0) {
             res.status(400).json({ message: 'This code is not applicable to any items in your cart.' });
             return;
@@ -99,21 +120,19 @@ export const validateCoupon = async (req: Request, res: Response): Promise<void>
             return;
         }
 
-        // 6. First-Time User Check
-        if (coupon.isFirstTimeUserOnly) {
-            const pastOrders = await Order.countDocuments({ user: userId, isPaid: true });
-            if (pastOrders > 0) {
-                res.status(400).json({ message: 'This coupon is valid for first-time buyers only.' });
-                return;
-            }
+        // Calculate exact discount
+        let calculatedDiscount = 0;
+        const offer = coupon.discountOffer as any;
+
+        if (!offer) {
+            res.status(500).json({ message: 'Coupon offer details are missing.' });
+            return;
         }
 
-        // 7. Calculate exact discount amount based ONLY on eligible items
-        let calculatedDiscount = 0;
-        if (coupon.discountType === 'percentage') {
-            calculatedDiscount = (eligibleSubtotal * coupon.discountValue) / 100;
-        } else {
-            calculatedDiscount = coupon.discountValue; // Flat amount
+        if (offer.discountType === 'percentage') {
+            calculatedDiscount = (eligibleSubtotal * Number(offer.discountValue)) / 100;
+        } else if (offer.discountType === 'flat') {
+            calculatedDiscount = Number(offer.discountValue);
         }
 
         // Prevent flat discounts from exceeding the cost of eligible items
@@ -121,13 +140,13 @@ export const validateCoupon = async (req: Request, res: Response): Promise<void>
             calculatedDiscount = eligibleSubtotal;
         }
 
-        // Send the final result with the exact math done
         res.status(200).json({
             ...coupon.toObject(),
             calculatedDiscount
         });
 
     } catch (error: any) {
+        console.error('🔥 CATCH BLOCK ERROR:', error);
         res.status(500).json({ message: error.message });
     }
 };

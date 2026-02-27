@@ -4,6 +4,9 @@ import Stripe from 'stripe';
 import dotenv from 'dotenv';
 import Product from '../models/Product.js';
 import mongoose from 'mongoose';
+import PaymentTerm from '../models/PaymentTerm.js';
+import { generatePaymentTermsText } from '../utils/billingUtils.js';
+import Coupon from '../models/Coupon.js';
 
 dotenv.config();
 
@@ -41,50 +44,76 @@ export const addOrderItems = async (req: Request, res: Response): Promise<void> 
 
         const userId = (req as any).user.userId || (req as any).user._id || (req as any).user.id;
 
-        // --- NEW: Calculate Total Cost & Enrich Items ---
+        // Calculate Total Cost & Enrich Items
         let calculatedTotalCost = 0;
         const enrichedOrderItems = [];
 
         for (const item of orderItems) {
-            // Find the product and the specific variant to get the actual cost right now
             const product = await Product.findById(item.product);
             const variant = product?.variants.find(v => v.sku === item.sku);
 
             const itemCost = variant ? variant.purchasePrice : 0;
             const itemTax = variant ? variant.purchaseTax : 0;
-            
-            // Add cost + tax, multiplied by quantity
+
             calculatedTotalCost += (itemCost + (itemCost * (itemTax / 100))) * item.qty;
 
-            enrichedOrderItems.push({
-                ...item,
-                purchasePrice: itemCost,
-                purchaseTax: itemTax
-            });
-            
-            // Deduct Stock
+            enrichedOrderItems.push({ ...item, purchasePrice: itemCost, purchaseTax: itemTax });
+
             await Product.updateOne(
                 { _id: new mongoose.Types.ObjectId(item.product), "variants.sku": item.sku },
                 { $inc: { "variants.$.stock": -item.qty } }
             );
         }
 
-        // 1. Create the Order with enriched items and totalCost
+        // --- NEW: FETCH & APPLY PAYMENT TERMS ---
+        // Find the default web term
+        let defaultTerm = await PaymentTerm.findOne({ name: 'Immediate Payment' });
+
+        // Failsafe: If the admin hasn't created it yet, auto-create it so the checkout doesn't crash
+        if (!defaultTerm) {
+            defaultTerm = await PaymentTerm.create({
+                name: 'Immediate Payment',
+                earlyPaymentDiscount: false,
+                examplePreview: 'Payment Terms: Immediate Payment'
+            });
+        }
+
+        // Generate the exact text for the PDF
+        const paymentTermsPreview = generatePaymentTermsText(
+            defaultTerm,
+            new Date(),
+            itemsPrice, // Base amount (Products only)
+            totalPrice  // Total amount (Products + Tax + Shipping)
+        );
+
+        // 1. Create the Order
         const order = new Order({
             user: userId,
-            orderItems: enrichedOrderItems, 
-            shippingAddress, 
-            paymentMethod, 
-            itemsPrice, 
-            shippingPrice, 
-            totalPrice, 
-            totalCost: calculatedTotalCost, // <--- NEW
-            isPaid: true, 
+            orderItems: enrichedOrderItems,
+            shippingAddress,
+            paymentMethod,
+            itemsPrice,
+            shippingPrice,
+            totalPrice,
+            totalCost: calculatedTotalCost,
+
+            // --- Attach the Payment Terms ---
+            paymentTerm: defaultTerm._id,
+            paymentTermsPreview: paymentTermsPreview,
+
+            isPaid: true,
             paidAt: new Date(),
-            paymentResult 
+            paymentResult
         });
 
         const createdOrder = await order.save();
+
+        if (req.body.appliedCouponId) {
+            await Coupon.findByIdAndUpdate(
+                req.body.appliedCouponId, 
+                { status: 'used' } // Locks the coupon forever 
+            );
+        }
 
         res.status(201).json(createdOrder);
     } catch (error: any) {
@@ -133,7 +162,7 @@ export const updateOrderToDelivered = async (req: Request, res: Response): Promi
 
         if (order) {
             order.isDelivered = true;
-            order.deliveredAt = new Date(); 
+            order.deliveredAt = new Date();
 
             const updatedOrder = await order.save();
             res.status(200).json(updatedOrder);
