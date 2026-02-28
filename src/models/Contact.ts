@@ -2,7 +2,8 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IContact extends Document {
   name: string;
-  type: 'customer' | 'admin' | 'both';
+  // Safely kept 'admin' so the app doesn't break, but added 'vendor'!
+  type: 'customer' | 'admin' | 'vendor' | 'both'; 
   email: string;
   mobile: string;
   address: {
@@ -24,7 +25,8 @@ const contactSchema = new Schema<IContact>(
     },
     type: {
       type: String,
-      enum: ['customer', 'admin', 'both'],
+      // Safely kept 'admin' so the app doesn't break, but added 'vendor'!
+      enum: ['customer', 'admin', 'vendor', 'both'], 
       required: true,
     },
     email: {

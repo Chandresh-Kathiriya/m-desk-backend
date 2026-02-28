@@ -7,6 +7,7 @@ import mongoose from 'mongoose';
 import PaymentTerm from '../models/PaymentTerm.js';
 import { generatePaymentTermsText } from '../utils/billingUtils.js';
 import Coupon from '../models/Coupon.js';
+import Cart from '../models/Cart.js';
 
 // --- NEW ERP IMPORTS ---
 import SystemSettings from '../models/SystemSettings.js';
@@ -168,6 +169,13 @@ export const addOrderItems = async (req: Request, res: Response): Promise<void> 
             }
         }
         // ==========================================
+
+        try {
+            await Cart.findOneAndDelete({ user: userId });
+            console.log(`[CART CLEARED] Successfully wiped cart for user ${userId}`);
+        } catch (cartError) {
+            console.error(`[CART CLEAR ERROR] Failed to clear cart after order:`, cartError);
+        }
 
         res.status(201).json(createdOrder);
     } catch (error: any) {

@@ -68,14 +68,14 @@ export const getPublishedProducts = async (req: Request, res: Response): Promise
   try {
     // Customers can filter products (e.g., ?productCategory=men&material=cotton)
     const { productCategory, productType, material, search } = req.query;
-    
+
     // Base query strictly forces published to be true
     const query: any = { published: true };
 
     if (productCategory) query.productCategory = productCategory;
     if (productType) query.productType = productType;
     if (material) query.material = material;
-    
+
     // If a search term is provided, use the text index we created in the schema
     if (search) {
       query.$text = { $search: search as string };
@@ -136,8 +136,8 @@ export const getAdminProducts = async (req: Request, res: Response): Promise<voi
     const products = await Product.find({})
       .populate('productCategory', 'name')
       .populate('brand', 'name') // NEW
-      .sort({ createdAt: -1 }); 
-      
+      .sort({ createdAt: -1 });
+
     res.json({ products });
   } catch (error) {
     res.status(500).json({ message: (error as Error).message });
@@ -145,19 +145,24 @@ export const getAdminProducts = async (req: Request, res: Response): Promise<voi
 };
 
 // Fetch all PUBLISHED and IN-STOCK products for the public storefront
-export const getPublicProducts = async (req: Request, res: Response): Promise<void> => {
-  try {    
-    // 3. Run the strict query
-    const products = await Product.find({ 
-      published: true,
-      variants: { $elemMatch: { stock: { $gt: 0 } } } 
-    })
-      .populate('brand', 'name')
-      .populate('productCategory', 'name')
-      .populate('style', 'name')
-      .sort({ createdAt: -1 }); 
-      
-    res.json({ products });
+export const getPublicProducts = async (req: Request, res: Response) => {
+  try {
+    const pageSize = 8; // Number of products to load per scroll
+    const page = Number(req.query.page) || 1;
+
+    // Only count 'published' products
+    const count = await Product.countDocuments({ published: true });
+
+    const products = await Product.find({ published: true })
+      .limit(pageSize)
+      .skip(pageSize * (page - 1))
+      .populate('brand', 'name');
+
+    res.json({
+      products,
+      page,
+      pages: Math.ceil(count / pageSize)
+    });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
@@ -237,9 +242,9 @@ export const updateProductReview = async (req: Request, res: Response): Promise<
 
     if (product) {
       const review = (product.reviews as any).id(req.params.reviewId);
-      
+
       if (!review) { res.status(404).json({ message: 'Review not found' }); return; }
-      
+
       // Ensure the user owns this review
       if (review.user.toString() !== userId.toString()) {
         res.status(401).json({ message: 'User not authorized to edit this review' }); return;
@@ -278,7 +283,7 @@ export const voteReview = async (req: Request, res: Response): Promise<void> => 
 
       if (voteType === 'helpful') review.helpfulVotes += 1;
       if (voteType === 'unhelpful') review.unhelpfulVotes += 1;
-      
+
       review.votedUsers.push(userId); // Log the user so they can't vote again
 
       await product.save();
