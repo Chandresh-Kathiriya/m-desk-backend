@@ -8,6 +8,11 @@ import PaymentTerm from '../models/PaymentTerm.js';
 import { generatePaymentTermsText } from '../utils/billingUtils.js';
 import Coupon from '../models/Coupon.js';
 
+// --- NEW ERP IMPORTS ---
+import SystemSettings from '../models/SystemSettings.js';
+import CustomerInvoice from '../models/CustomerInvoice.js';
+import Contact from '../models/Contact.js';
+
 dotenv.config();
 
 // Initialize Stripe with your Secret Key
@@ -35,7 +40,11 @@ export const createStripeIntent = async (req: Request, res: Response): Promise<v
 // @route   POST /api/orders
 export const addOrderItems = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { orderItems, shippingAddress, paymentMethod, itemsPrice, shippingPrice, totalPrice, paymentResult } = req.body;
+        const { 
+            orderItems, shippingAddress, paymentMethod, itemsPrice, 
+            shippingPrice, totalPrice, paymentResult, 
+            appliedCouponId, calculatedDiscount // <-- Added to capture discount amount for the invoice
+        } = req.body;
 
         if (orderItems && orderItems.length === 0) {
             res.status(400).json({ message: 'No order items' });
@@ -65,11 +74,9 @@ export const addOrderItems = async (req: Request, res: Response): Promise<void> 
             );
         }
 
-        // --- NEW: FETCH & APPLY PAYMENT TERMS ---
-        // Find the default web term
+        // --- FETCH & APPLY PAYMENT TERMS ---
         let defaultTerm = await PaymentTerm.findOne({ name: 'Immediate Payment' });
 
-        // Failsafe: If the admin hasn't created it yet, auto-create it so the checkout doesn't crash
         if (!defaultTerm) {
             defaultTerm = await PaymentTerm.create({
                 name: 'Immediate Payment',
@@ -78,12 +85,11 @@ export const addOrderItems = async (req: Request, res: Response): Promise<void> 
             });
         }
 
-        // Generate the exact text for the PDF
         const paymentTermsPreview = generatePaymentTermsText(
             defaultTerm,
             new Date(),
-            itemsPrice, // Base amount (Products only)
-            totalPrice  // Total amount (Products + Tax + Shipping)
+            itemsPrice, 
+            totalPrice  
         );
 
         // 1. Create the Order
@@ -97,7 +103,6 @@ export const addOrderItems = async (req: Request, res: Response): Promise<void> 
             totalPrice,
             totalCost: calculatedTotalCost,
 
-            // --- Attach the Payment Terms ---
             paymentTerm: defaultTerm._id,
             paymentTermsPreview: paymentTermsPreview,
 
@@ -108,12 +113,61 @@ export const addOrderItems = async (req: Request, res: Response): Promise<void> 
 
         const createdOrder = await order.save();
 
-        if (req.body.appliedCouponId) {
+        if (appliedCouponId) {
             await Coupon.findByIdAndUpdate(
-                req.body.appliedCouponId, 
-                { status: 'used' } // Locks the coupon forever 
+                appliedCouponId, 
+                { status: 'used' } 
             );
         }
+
+       // ==========================================
+        // ERP LOGIC: AUTOMATIC INVOICING (TASK 3)
+        // ==========================================
+        let settings = await SystemSettings.findOne();
+        if (!settings) {
+            settings = await SystemSettings.create({ automaticInvoicing: false });
+        }
+
+        if (settings.automaticInvoicing) {
+            console.log(`[ERP] Auto-Invoicing is ON. Searching for Contact linked to User: ${userId}`);
+            
+            const userContact = await Contact.findOne({ linkedUser: userId });
+
+            if (!userContact) {
+                console.warn(`[ERP WARNING] No Contact profile found for this user! Skipping invoice creation.`);
+                // NOTE: To fix this for your test account, either create a new user account, 
+                // or manually copy your User _id into a Contact's `linkedUser` field in MongoDB!
+            } else {
+                try {
+                    const formattedInvoiceItems = createdOrder.orderItems.map((item: any) => ({
+                        product: item.product,
+                        quantity: item.qty,
+                        unitPrice: item.price,
+                        tax: item.tax || 0,
+                        totalAmount: item.qty * item.price
+                    }));
+
+                    const generatedInvoiceNumber = `INV-${Date.now()}`;
+
+                    const newInvoice = await CustomerInvoice.create({
+                        invoiceNumber: generatedInvoiceNumber,
+                        salesOrder: createdOrder._id, 
+                        customer: userContact._id,    
+                        items: formattedInvoiceItems,
+                        invoiceDate: new Date(),
+                        dueDate: new Date(),         
+                        totalAmount: createdOrder.totalPrice,
+                        paidAmount: createdOrder.totalPrice, 
+                        discountAmount: calculatedDiscount || 0, 
+                        status: 'paid'                
+                    });
+                    console.log(`[ERP SUCCESS] Customer Invoice ${newInvoice.invoiceNumber} created!`);
+                } catch (invoiceErr) {
+                    console.error(`[ERP ERROR] Failed to create invoice:`, invoiceErr);
+                }
+            }
+        }
+        // ==========================================
 
         res.status(201).json(createdOrder);
     } catch (error: any) {
@@ -148,7 +202,6 @@ export const getOrderById = async (req: Request, res: Response): Promise<void> =
 
 export const getOrders = async (req: Request, res: Response): Promise<void> => {
     try {
-        // --- NEW: Added 'mobile' to the populate list! ---
         const orders = await Order.find({}).populate('user', 'id name email mobile').sort({ createdAt: -1 });
         res.status(200).json(orders);
     } catch (error: any) {

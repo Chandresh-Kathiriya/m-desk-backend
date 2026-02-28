@@ -60,7 +60,7 @@ const customerInvoiceSchema = new Schema<ICustomerInvoice>(
     },
     salesOrder: {
       type: Schema.Types.ObjectId,
-      ref: 'SalesOrder',
+      ref: 'Order',
       required: true,
     },
     customer: {

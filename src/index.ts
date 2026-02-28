@@ -21,6 +21,8 @@ import couponRoutes from './routes/couponRoutes.js';
 import paymentTermRoutes from './routes/paymentTermRoutes.js';
 import discountRoutes from './routes/discountRoutes.js';
 import contactRoutes from './routes/contactRoutes.js';
+import settingsRoutes from './routes/settingsRoutes.js';
+import invoiceRoutes from './routes/invoiceRoutes.js';
 
 const app: Application = express();
 
@@ -55,6 +57,8 @@ app.use('/api/coupons', couponRoutes);
 app.use('/api/payment-terms', paymentTermRoutes);
 app.use('/api/discounts', discountRoutes);
 app.use('/api/contacts', contactRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/invoices', invoiceRoutes);
 
 // Default health check route
 app.get('/', (req: Request, res: Response) => {
