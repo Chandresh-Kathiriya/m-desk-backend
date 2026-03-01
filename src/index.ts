@@ -24,6 +24,8 @@ import contactRoutes from './routes/contactRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
 import invoiceRoutes from './routes/invoiceRoutes.js';
 import purchaseRoutes from './routes/purchaseRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
+import vendorBillRoutes from './routes/vendorBillRoutes.js';
 
 const app: Application = express();
 
@@ -61,6 +63,8 @@ app.use('/api/contacts', contactRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/purchases', purchaseRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/bills', vendorBillRoutes);
 
 // Default health check route
 app.get('/', (req: Request, res: Response) => {

@@ -1,10 +1,10 @@
 import express from 'express';
 import { 
     createPurchaseOrder, 
-    confirmPurchaseOrder, 
-    convertToBill,
+    downloadPurchaseOrderPDF, 
     getPurchaseOrderById,
-    getPurchaseOrders
+    getPurchaseOrders,
+    receiveAndBillPurchaseOrder
 } from '../controllers/purchaseController.js';
 import { authenticate, authorizeRoles } from '../middleware/auth.js';
 
@@ -18,9 +18,7 @@ router.route('/').post(createPurchaseOrder);
 
 // Route to confirm a PO (Updates Stock)
 router.route('/:id').get(getPurchaseOrderById);
-router.route('/:id/confirm').put(confirmPurchaseOrder);
-
-// Route to convert a confirmed PO into a Vendor Bill
-router.route('/:id/bill').post(convertToBill);
+router.route('/:id/receive').post(receiveAndBillPurchaseOrder);
+router.route('/:id/download').get(downloadPurchaseOrderPDF);
 
 export default router;
