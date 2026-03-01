@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import Brand from '../models/Brand';
-import { createCrudController } from '../controllers/crudFactory';
-import { authenticate, authorizeRoles } from '../middleware/auth';
+import Brand from '../models/Brand.js';
+import { createCrudController } from '../controllers/crudFactory.js';
+import { authenticate, authorizeRoles } from '../middleware/auth.js';
 
 const router = Router();
 
