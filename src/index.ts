@@ -26,6 +26,7 @@ import invoiceRoutes from './routes/invoiceRoutes.js';
 import purchaseRoutes from './routes/purchaseRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import vendorBillRoutes from './routes/vendorBillRoutes.js';
+import reportRoutes from './routes/reportRoutes.js';
 
 const app: Application = express();
 
@@ -65,6 +66,7 @@ app.use('/api/invoices', invoiceRoutes);
 app.use('/api/purchases', purchaseRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/bills', vendorBillRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Default health check route
 app.get('/', (req: Request, res: Response) => {
