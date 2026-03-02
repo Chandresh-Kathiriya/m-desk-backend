@@ -7,13 +7,7 @@ import cors from 'cors';
 import { connectDatabase } from './config/database.js';
 import authRoutes from './routes/authRoutes.js';
 import productRoutes from './routes/productRoutes.js';
-import categoryRoutes from './routes/categoryRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
-import brandRoutes from './routes/brandRoutes.js';
-import colorRoutes from './routes/colorRoutes.js';
-import sizeRoutes from './routes/sizeRoutes.js';
-import styleRoutes from './routes/styleRoutes.js';
-import typeRoutes from './routes/typeRoutes.js';
 import inventoryRoutes from './routes/inventoryRoutes.js';
 import cartRoutes from './routes/cartRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
@@ -27,6 +21,8 @@ import purchaseRoutes from './routes/purchaseRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import vendorBillRoutes from './routes/vendorBillRoutes.js';
 import reportRoutes from './routes/reportRoutes.js';
+import masterDataRoutes from './routes/masterDataRoutes.js';
+import userRoutes from './routes/userRoutes.js';
 
 const app: Application = express();
 
@@ -46,14 +42,7 @@ connectDatabase();
 // Mount Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
-app.use('/api/categories', categoryRoutes);
 app.use('/api/upload', uploadRoutes);
-app.use('/api/brands', brandRoutes);
-app.use('/api/colors', colorRoutes);
-app.use('/api/sizes', sizeRoutes);
-app.use('/api/styles', styleRoutes);
-app.use('/api/categories', categoryRoutes);
-app.use('/api/types', typeRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
@@ -61,12 +50,14 @@ app.use('/api/coupons', couponRoutes);
 app.use('/api/payment-terms', paymentTermRoutes);
 app.use('/api/discounts', discountRoutes);
 app.use('/api/contacts', contactRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/purchases', purchaseRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/bills', vendorBillRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/masterdata', masterDataRoutes);
 
 // Default health check route
 app.get('/', (req: Request, res: Response) => {

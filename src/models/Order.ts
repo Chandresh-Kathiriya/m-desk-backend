@@ -20,12 +20,22 @@ export interface IOrder extends Document {
   shippingPrice: number;
   totalPrice: number;
   totalCost: number;
-  paymentTerm: mongoose.Types.ObjectId; 
-  paymentTermsPreview: string;
+  
+  // --- UPDATED: Made optional to support Manual Orders ---
+  paymentTerm?: mongoose.Types.ObjectId; 
+  paymentTermsPreview?: string;
+  
+  // --- NEW: Admin Manual Order Fields ---
+  isManualEntry: boolean;
+  manualPaymentDays?: number; // Stores the 0-365 days entered by admin
+
   isPaid: boolean;
   paidAt?: Date;
   isDelivered: boolean;
   deliveredAt?: Date;
+  
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const orderSchema = new Schema<IOrder>(
@@ -41,7 +51,6 @@ const orderSchema = new Schema<IOrder>(
         qty: { type: Number, required: true },
         image: { type: String, required: true },
         price: { type: Number, required: true },
-        // --- NEW: Capture cost at the exact time of sale ---
         purchasePrice: { type: Number, required: true, default: 0 },
         purchaseTax: { type: Number, required: true, default: 0 },
         product: {
@@ -88,17 +97,28 @@ const orderSchema = new Schema<IOrder>(
     totalCost: {
       type: Number,
       required: true,
-      default: 0.0, // <--- NEW: Saved for the whole order
+      default: 0.0, 
     },
+    
+    // --- UPDATED: Removed required: true ---
     paymentTerm: {
       type: Schema.Types.ObjectId,
-      ref: 'PaymentTerm',
-      required: true
+      ref: 'PaymentTerm'
     },
     paymentTermsPreview: {
-      type: String,
-      required: true
+      type: String
     },
+
+    // --- NEW: Admin Manual Order Fields ---
+    isManualEntry: {
+      type: Boolean,
+      default: false
+    },
+    manualPaymentDays: {
+      type: Number,
+      default: 0
+    },
+
     isPaid: {
       type: Boolean,
       required: true,

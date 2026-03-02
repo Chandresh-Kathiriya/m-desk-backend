@@ -6,9 +6,10 @@ import {
   getOrders, 
   updateOrderToDelivered,
   verifyPayment,
-  createStripeIntent // <-- Import the new function
+  createStripeIntent,
+  markOrderAsPaidAdmin
 } from '../controllers/orderController.js';
-import { authenticate } from '../middleware/auth.js'; 
+import { authenticate, authorizeRoles } from '../middleware/auth.js'; 
 
 const router = express.Router();
 
@@ -18,6 +19,8 @@ router.route('/stripe-intent').post(authenticate, createStripeIntent);
 router.route('/')
   .post(authenticate, addOrderItems)
   .get(authenticate, getOrders);
+
+  router.route('/:id/pay-admin').put(authenticate, authorizeRoles('admin'), markOrderAsPaidAdmin);
 
 router.route('/myorders').get(authenticate, getMyOrders);
 router.route('/verify-payment').post(authenticate, verifyPayment);

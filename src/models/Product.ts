@@ -82,18 +82,18 @@ const variantSchema = new Schema<IVariant>({
 const productSchema = new Schema<IProduct>(
   {
     productName: { type: String, required: true },
-    productCategory: { type: Schema.Types.ObjectId, ref: 'Category', required: true },
     
-    // --- NEW FIELDS MOVED INSIDE THE SCHEMA OBJECT ---
-    brand: { type: Schema.Types.ObjectId, ref: 'Brand' },
-    style: { type: Schema.Types.ObjectId, ref: 'Style' },
+    // --- CHANGED ALL REFS TO 'MasterData' ---
+    productCategory: { type: Schema.Types.ObjectId, ref: 'MasterData', required: true },
+    brand: { type: Schema.Types.ObjectId, ref: 'MasterData' },
+    style: { type: Schema.Types.ObjectId, ref: 'MasterData' },
     
     productType: { type: String, required: true },
     material: { type: String, required: true },
     
-    // --- UPDATED ARRAYS TO HOLD IDS ---
-    colors: [{ type: Schema.Types.ObjectId, ref: 'Color' }], 
-    sizes: [{ type: Schema.Types.ObjectId, ref: 'Size' }],
+    // --- CHANGED ALL REFS TO 'MasterData' ---
+    colors: [{ type: Schema.Types.ObjectId, ref: 'MasterData' }], 
+    sizes: [{ type: Schema.Types.ObjectId, ref: 'MasterData' }],
     
     variants: [variantSchema], 
     published: { type: Boolean, default: false },

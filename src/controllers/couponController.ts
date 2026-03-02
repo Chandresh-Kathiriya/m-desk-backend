@@ -66,9 +66,27 @@ export const validateCoupon = async (req: Request, res: Response): Promise<void>
         if (new Date(coupon.expirationDate) < new Date()) { res.status(400).json({ message: 'This coupon has expired' }); return; }
         if (coupon.usedCount >= coupon.usageLimit) { res.status(400).json({ message: 'This coupon has reached its usage limit' }); return; }
 
+        // =========================================================
+        // --- NEW SMART ERP ACCESS CHECK ---
+        // If a Contact is attached to this coupon, fetch the Contact
+        // and verify that the Contact's 'linkedUser' matches the 
+        // storefront 'userId' trying to check out!
+        // =========================================================
+        const assignedContactId = (coupon as any).contact || (coupon as any).contactId;
+
+        if (assignedContactId) {
+            const linkedContact = await Contact.findById(assignedContactId);
+
+            // If the contact has no linkedUser, OR the linkedUser doesn't match the current shopper:
+            if (!linkedContact || !linkedContact.linkedUser || linkedContact.linkedUser.toString() !== userId.toString()) {
+                res.status(403).json({ message: 'This exclusive coupon code is assigned to a different customer.' });
+                return;
+            }
+        }
+        // =========================================================
+
         // Fetch products from DB to verify real prices
         const productIds = cartItems.map((item: any) => item.product || item._id);
-
         const dbProducts = await Product.find({ _id: { $in: productIds } });
 
         if (dbProducts.length === 0) {
@@ -79,15 +97,13 @@ export const validateCoupon = async (req: Request, res: Response): Promise<void>
         let cartTotal = 0;
         let eligibleSubtotal = 0;
 
-        cartItems.forEach((item: any, index: number) => {
+        cartItems.forEach((item: any) => {
             const product = dbProducts.find((p) => p._id.toString() === (item.product || item._id).toString()) as any;
 
             if (product) {
-                // FIX: Fallback to the frontend item's price/name if the DB product doesn't have them at the top level
+                // Fallback to the frontend item's price/name if the DB product doesn't have them at the top level
                 const price = Number(product.price) || Number(item.price) || 0;
-                const name = product.name || item.name || 'Unknown Product';
                 const qty = Number(item.qty) || 1;
-
                 const itemTotal = price * qty;
 
                 cartTotal += itemTotal;

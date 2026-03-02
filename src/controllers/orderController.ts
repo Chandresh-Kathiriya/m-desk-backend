@@ -37,14 +37,17 @@ export const createStripeIntent = async (req: Request, res: Response): Promise<v
     }
 };
 
-// @desc    Create new order & deduct stock (RUNS AFTER STRIPE SUCCESS)
+// @desc    Create new order & deduct stock (Handles BOTH Stripe and Manual Admin Orders)
 // @route   POST /api/orders
 export const addOrderItems = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { 
-            orderItems, shippingAddress, paymentMethod, itemsPrice, 
-            shippingPrice, totalPrice, paymentResult, 
-            appliedCouponId, calculatedDiscount // <-- Added to capture discount amount for the invoice
+        const {
+            user, // <-- Admin provided user ID
+            orderItems, shippingAddress, paymentMethod, itemsPrice,
+            shippingPrice, totalPrice, paymentResult,
+            appliedCouponId, calculatedDiscount,
+            // --- NEW: Admin Manual Fields ---
+            isPaid, paidAt, paymentTerms, isManualEntry
         } = req.body;
 
         if (orderItems && orderItems.length === 0) {
@@ -52,7 +55,8 @@ export const addOrderItems = async (req: Request, res: Response): Promise<void> 
             return;
         }
 
-        const userId = (req as any).user.userId || (req as any).user._id || (req as any).user.id;
+        // If manual entry, use the provided user ID. Otherwise, use the logged-in customer's ID.
+        const userId = user || (req as any).user.userId || (req as any).user._id || (req as any).user.id;
 
         // Calculate Total Cost & Enrich Items
         let calculatedTotalCost = 0;
@@ -69,6 +73,7 @@ export const addOrderItems = async (req: Request, res: Response): Promise<void> 
 
             enrichedOrderItems.push({ ...item, purchasePrice: itemCost, purchaseTax: itemTax });
 
+            // Deduct stock
             await Product.updateOne(
                 { _id: new mongoose.Types.ObjectId(item.product), "variants.sku": item.sku },
                 { $inc: { "variants.$.stock": -item.qty } }
@@ -76,22 +81,31 @@ export const addOrderItems = async (req: Request, res: Response): Promise<void> 
         }
 
         // --- FETCH & APPLY PAYMENT TERMS ---
-        let defaultTerm = await PaymentTerm.findOne({ name: 'Immediate Payment' });
+        let finalPaymentTermId = null;
+        let finalPaymentTermsPreview = '';
 
-        if (!defaultTerm) {
-            defaultTerm = await PaymentTerm.create({
-                name: 'Immediate Payment',
-                earlyPaymentDiscount: false,
-                examplePreview: 'Payment Terms: Immediate Payment'
-            });
+        if (isManualEntry && paymentTerms > 0) {
+            // It's a manual credit order (e.g. Net 30)
+            finalPaymentTermsPreview = `Payment Expected in ${paymentTerms} Days (Net ${paymentTerms})`;
+        } else {
+            // Standard Immediate Payment (Stripe or Cash Paid)
+            let defaultTerm = await PaymentTerm.findOne({ name: 'Immediate Payment' });
+
+            if (!defaultTerm) {
+                defaultTerm = await PaymentTerm.create({
+                    name: 'Immediate Payment',
+                    earlyPaymentDiscount: false,
+                    examplePreview: 'Payment Terms: Immediate Payment'
+                });
+            }
+            finalPaymentTermId = defaultTerm._id;
+            finalPaymentTermsPreview = generatePaymentTermsText(
+                defaultTerm,
+                new Date(),
+                itemsPrice,
+                totalPrice
+            );
         }
-
-        const paymentTermsPreview = generatePaymentTermsText(
-            defaultTerm,
-            new Date(),
-            itemsPrice, 
-            totalPrice  
-        );
 
         // 1. Create the Order
         const order = new Order({
@@ -104,25 +118,29 @@ export const addOrderItems = async (req: Request, res: Response): Promise<void> 
             totalPrice,
             totalCost: calculatedTotalCost,
 
-            paymentTerm: defaultTerm._id,
-            paymentTermsPreview: paymentTermsPreview,
+            paymentTerm: finalPaymentTermId,
+            paymentTermsPreview: finalPaymentTermsPreview,
 
-            isPaid: true,
-            paidAt: new Date(),
-            paymentResult
+            // If manual entry, trust the incoming payload. Otherwise default to Stripe success (true)
+            isPaid: isManualEntry ? isPaid : true,
+            paidAt: isManualEntry ? paidAt : new Date(),
+            paymentResult,
+
+            isManualEntry: isManualEntry || false,
+            manualPaymentDays: paymentTerms || 0
         });
 
         const createdOrder = await order.save();
 
         if (appliedCouponId) {
             await Coupon.findByIdAndUpdate(
-                appliedCouponId, 
-                { status: 'used' } 
+                appliedCouponId,
+                { status: 'used' }
             );
         }
 
-       // ==========================================
-        // ERP LOGIC: AUTOMATIC INVOICING (TASK 3)
+        // ==========================================
+        // ERP LOGIC: AUTOMATIC INVOICING 
         // ==========================================
         let settings = await SystemSettings.findOne();
         if (!settings) {
@@ -131,13 +149,11 @@ export const addOrderItems = async (req: Request, res: Response): Promise<void> 
 
         if (settings.automaticInvoicing) {
             console.log(`[ERP] Auto-Invoicing is ON. Searching for Contact linked to User: ${userId}`);
-            
+
             const userContact = await Contact.findOne({ linkedUser: userId });
 
             if (!userContact) {
                 console.warn(`[ERP WARNING] No Contact profile found for this user! Skipping invoice creation.`);
-                // NOTE: To fix this for your test account, either create a new user account, 
-                // or manually copy your User _id into a Contact's `linkedUser` field in MongoDB!
             } else {
                 try {
                     const formattedInvoiceItems = createdOrder.orderItems.map((item: any) => ({
@@ -150,19 +166,31 @@ export const addOrderItems = async (req: Request, res: Response): Promise<void> 
 
                     const generatedInvoiceNumber = `INV-${Date.now()}`;
 
+                    // Determine invoice status based on order payment status
+                    const invoiceStatus = createdOrder.isPaid ? 'paid' : 'unpaid';
+                    const paidAmount = createdOrder.isPaid ? createdOrder.totalPrice : 0;
+
+                    // If manual terms exist, calculate the exact due date
+                    const dueDate = new Date();
+                    const extraDays = createdOrder.manualPaymentDays || 0; // Safely defaults to 0 if undefined
+
+                    if (extraDays > 0) {
+                        dueDate.setDate(dueDate.getDate() + extraDays);
+                    }
+
                     const newInvoice = await CustomerInvoice.create({
                         invoiceNumber: generatedInvoiceNumber,
-                        salesOrder: createdOrder._id, 
-                        customer: userContact._id,    
+                        salesOrder: createdOrder._id,
+                        customer: userContact._id,
                         items: formattedInvoiceItems,
                         invoiceDate: new Date(),
-                        dueDate: new Date(),         
+                        dueDate: dueDate,
                         totalAmount: createdOrder.totalPrice,
-                        paidAmount: createdOrder.totalPrice, 
-                        discountAmount: calculatedDiscount || 0, 
-                        status: 'paid'                
+                        paidAmount: paidAmount,
+                        discountAmount: calculatedDiscount || 0,
+                        status: invoiceStatus
                     });
-                    console.log(`[ERP SUCCESS] Customer Invoice ${newInvoice.invoiceNumber} created!`);
+                    console.log(`[ERP SUCCESS] Customer Invoice ${newInvoice.invoiceNumber} created as ${invoiceStatus}!`);
                 } catch (invoiceErr) {
                     console.error(`[ERP ERROR] Failed to create invoice:`, invoiceErr);
                 }
@@ -170,11 +198,15 @@ export const addOrderItems = async (req: Request, res: Response): Promise<void> 
         }
         // ==========================================
 
-        try {
-            await Cart.findOneAndDelete({ user: userId });
-            console.log(`[CART CLEARED] Successfully wiped cart for user ${userId}`);
-        } catch (cartError) {
-            console.error(`[CART CLEAR ERROR] Failed to clear cart after order:`, cartError);
+        // Only clear the cart if this was a standard storefront checkout 
+        // (We don't want admins wiping out carts when making manual orders)
+        if (!isManualEntry) {
+            try {
+                await Cart.findOneAndDelete({ user: userId });
+                console.log(`[CART CLEARED] Successfully wiped cart for user ${userId}`);
+            } catch (cartError) {
+                console.error(`[CART CLEAR ERROR] Failed to clear cart after order:`, cartError);
+            }
         }
 
         res.status(201).json(createdOrder);
@@ -264,6 +296,71 @@ export const verifyPayment = async (req: Request, res: Response): Promise<void> 
         }
     } catch (error: any) {
         console.error("🔥 ERROR VERIFYING PAYMENT:", error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Mark order as paid by Admin (with 2% early payment logic)
+// @route   PUT /api/orders/:id/pay-admin
+// @access  Private/Admin
+export const markOrderAsPaidAdmin = async (req: Request, res: Response): Promise<void> => {
+    try {
+        // 1. ADD .populate('user', 'email') SO WE ACTUALLY GET THE EMAIL FROM THE DB
+        const order = await Order.findById(req.params.id).populate('user', 'email');
+
+        if (!order) {
+            res.status(404).json({ message: 'Order not found' });
+            return;
+        }
+
+        if (order.isPaid) {
+            res.status(400).json({ message: 'Order is already paid' });
+            return;
+        }
+
+        const { paymentDate } = req.body;
+        const paidDate = paymentDate ? new Date(paymentDate) : new Date();
+        const orderDate = new Date(order.createdAt);
+        
+        let appliedDiscount = 0;
+        let discountMessage = '';
+
+        // Calculate if paid within the allowed term days
+        const termDays = order.manualPaymentDays || 0;
+        const dueDate = new Date(orderDate);
+        dueDate.setDate(dueDate.getDate() + termDays);
+        dueDate.setHours(23, 59, 59, 999); // Set to end of the day
+
+        // If paid on or before the due date, apply 2% discount!
+        if (paidDate <= dueDate) {
+            appliedDiscount = order.totalPrice * 0.02; // 2% 
+            order.totalPrice = order.totalPrice - appliedDiscount; // Deduct from total
+            discountMessage = ` (2% Early Payment Discount Applied: -₹${appliedDiscount.toFixed(2)})`;
+        }
+
+        order.isPaid = true;
+        order.paidAt = paidDate;
+        order.paymentResult = {
+            id: `MANUAL-${Date.now()}`,
+            status: `Paid manually by Admin${discountMessage}`,
+            update_time: paidDate.toISOString(),
+            // 2. USE (order.user as any) TO TELL TYPESCRIPT TO ALLOW IT
+            email_address: (order.user as any)?.email || 'N/A' 
+        };
+
+        const updatedOrder = await order.save();
+
+        // Update the ERP Customer Invoice if it exists
+        const invoice = await CustomerInvoice.findOne({ salesOrder: order._id });
+        if (invoice) {
+            invoice.status = 'paid';
+            invoice.paidAmount = updatedOrder.totalPrice; 
+            invoice.discountAmount = (invoice.discountAmount || 0) + appliedDiscount;
+            await invoice.save();
+        }
+
+        res.status(200).json(updatedOrder);
+    } catch (error: any) {
         res.status(500).json({ message: error.message });
     }
 };

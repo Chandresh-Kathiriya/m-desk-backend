@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import Product from '../models/Product.js';
 import User from '../models/User.js';
 import Order from '../models/Order.js';
+import MasterData from '../models/MasterData.js';
 
 // ==========================================
 // ADMIN ONLY CONTROLLERS
@@ -147,22 +148,35 @@ export const getAdminProducts = async (req: Request, res: Response): Promise<voi
 // Fetch all PUBLISHED and IN-STOCK products for the public storefront
 export const getPublicProducts = async (req: Request, res: Response) => {
   try {
-    const pageSize = 8; // Number of products to load per scroll
+    const pageSize = 8;
     const page = Number(req.query.page) || 1;
 
-    // Only count 'published' products
-    const count = await Product.countDocuments({ published: true });
+    const query: any = { published: true };
 
-    const products = await Product.find({ published: true })
+    // 1. Object ID Matches
+    if (req.query.categories) query.productCategory = { $in: (req.query.categories as string).split(',') };
+    if (req.query.brands) query.brand = { $in: (req.query.brands as string).split(',') };
+    if (req.query.styles) query.style = { $in: (req.query.styles as string).split(',') };
+    if (req.query.colors) query.colors = { $in: (req.query.colors as string).split(',') };
+    if (req.query.sizes) query.sizes = { $in: (req.query.sizes as string).split(',') };
+
+    // 2. String Matches (Convert Master Data IDs to Names for Product Types)
+    if (req.query.types) {
+      const typeIds = (req.query.types as string).split(',');
+      const typeDocs = await MasterData.find({ _id: { $in: typeIds } });
+      query.productType = { $in: typeDocs.map(t => t.name) }; // Maps ID to "Shirt", "Pant", etc.
+    }
+
+    const count = await Product.countDocuments(query);
+
+    const products = await Product.find(query)
       .limit(pageSize)
       .skip(pageSize * (page - 1))
-      .populate('brand', 'name');
+      .populate('brand', 'name')
+      .populate('productCategory', 'name')
+      .populate('style', 'name');
 
-    res.json({
-      products,
-      page,
-      pages: Math.ceil(count / pageSize)
-    });
+    res.json({ products, page, pages: Math.ceil(count / pageSize) });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
