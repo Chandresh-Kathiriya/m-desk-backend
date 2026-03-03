@@ -21,9 +21,17 @@ export const createContact = async (req: Request, res: Response): Promise<void> 
     try {
         const { name, type, email, mobile, address } = req.body;
 
-        const contactExists = await Contact.findOne({ email });
+        // --- FIX: Check for BOTH existing Email and Mobile ---
+        const contactExists = await Contact.findOne({ 
+            $or: [
+                { email: email },
+                { mobile: mobile }
+            ]
+        });
+
         if (contactExists) {
-            res.status(400).json({ message: 'Contact with this email already exists' });
+            const duplicateField = contactExists.email === email ? 'Email' : 'Mobile number';
+            res.status(400).json({ message: `Contact with this ${duplicateField.toLowerCase()} already exists.` });
             return;
         }
 

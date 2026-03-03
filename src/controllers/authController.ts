@@ -6,7 +6,6 @@ import { generateToken } from '../utils/jwt.js';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
-    // We now extract 'role' from the request body, defaulting to 'customer'
     const { name, email, password, mobile, city, state, pincode, role = 'customer' } = req.body;
 
     // Strict validation to ensure only our standard roles are used
@@ -15,9 +14,18 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const existingUser = await User.findOne({ email });
+    // --- FIX: Check for BOTH existing Email and Mobile ---
+    const existingUser = await User.findOne({ 
+        $or: [
+            { email: email },
+            { mobile: mobile }
+        ]
+    });
+
     if (existingUser) {
-      res.status(400).json({ message: 'Email already registered' });
+      // Determine exactly which field caused the duplicate error to show a helpful message
+      const duplicateField = existingUser.email === email ? 'Email address' : 'Mobile number';
+      res.status(400).json({ message: `${duplicateField} is already registered.` });
       return;
     }
 
@@ -70,22 +78,32 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    // Extract loginId (fallback to email just in case older clients still send it)
+    const { loginId, email, password } = req.body;
+    
+    const identifier = loginId || email;
 
-    if (!email || !password) {
-      res.status(400).json({ message: 'Email and password are required' });
+    if (!identifier || !password) {
+      res.status(400).json({ message: 'Email/Mobile and password are required' });
       return;
     }
 
-    const user = await User.findOne({ email }).select('+password');
+    // --- FIX: Use $or to check both the email and mobile columns ---
+    const user = await User.findOne({ 
+        $or: [
+            { email: identifier },
+            { mobile: identifier }
+        ]
+    }).select('+password');
+
     if (!user) {
-      res.status(401).json({ message: 'Invalid email or password' });
+      res.status(401).json({ message: 'Invalid email/mobile or password' });
       return;
     }
 
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
-      res.status(401).json({ message: 'Invalid email or password' });
+      res.status(401).json({ message: 'Invalid email/mobile or password' });
       return;
     }
 
@@ -102,6 +120,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         id: user._id,
         name: user.name,
         email: user.email,
+        mobile: user.mobile, // Optional: return mobile to the frontend too
         role: user.role,
       },
     });
