@@ -3,6 +3,7 @@ import Product from '../models/Product.js';
 import User from '../models/User.js';
 import Order from '../models/Order.js';
 import MasterData from '../models/MasterData.js';
+import mongoose from 'mongoose';
 
 // ==========================================
 // ADMIN ONLY CONTROLLERS
@@ -204,16 +205,35 @@ export const createProductReview = async (req: Request, res: Response): Promise<
   try {
     const { rating, comment } = req.body;
     const productId = req.params.id;
-    const userId = (req as any).user.userId || (req as any).user._id || (req as any).user.id;
+    
+    // 1. Get User ID from Request (Auth Middleware)
+    const userId = (req as any).user?._id || (req as any).user?.id || (req as any).user?.userId;
+
+    if (!userId) {
+      res.status(401).json({ message: 'Not authorized, no user ID found' });
+      return;
+    }
+
+    // 2. Fetch the actual User from DB to get their real Name
+    const User = mongoose.model('User'); // Ensure User model is imported or registered
+    const userDoc = await User.findById(userId);
+
+    if (!userDoc) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
 
     const product = await Product.findById(productId);
-    if (!product) { res.status(404).json({ message: 'Product not found' }); return; }
+    if (!product) {
+      res.status(404).json({ message: 'Product not found' });
+      return;
+    }
 
-    // 1. GUARDRAIL: Only allow review if they actually bought it and PAID for it!
+    // 3. GUARDRAIL: Verified Purchase Check
     const hasPurchased = await Order.findOne({
       user: userId,
       isPaid: true,
-      orderItems: { $elemMatch: { product: productId } } // <-- THE FIX: Strict array matching
+      orderItems: { $elemMatch: { product: productId } }
     });
 
     if (!hasPurchased) {
@@ -221,29 +241,40 @@ export const createProductReview = async (req: Request, res: Response): Promise<
       return;
     }
 
-    // 2. Check if already reviewed
-    const alreadyReviewed = product.reviews.find((r) => r.user.toString() === userId.toString());
+    // 4. Check if already reviewed
+    const alreadyReviewed = product.reviews.find(
+      (r) => r.user.toString() === userId.toString()
+    );
     if (alreadyReviewed) {
       res.status(400).json({ message: 'You have already reviewed this product' });
       return;
     }
 
-    // 3. Create Review with Verified Badge
+    // 5. Create Review using the name from the Database
     const review = {
       user: userId,
-      name: (req as any).user.name,
+      name: userDoc.name, // <--- This ensures the real name is saved
       rating: Number(rating),
       comment,
-      isVerifiedPurchase: true, // They passed the check!
+      isVerifiedPurchase: true,
+      helpfulVotes: 0,
+      unhelpfulVotes: 0,
+      reportCount: 0,
+      isEdited: false
     };
 
     product.reviews.push(review as any);
+    
+    // 6. Update Product Totals
     product.numReviews = product.reviews.length;
-    product.rating = product.reviews.reduce((acc, item) => item.rating + acc, 0) / product.reviews.length;
+    product.rating = 
+      product.reviews.reduce((acc, item) => item.rating + acc, 0) / product.reviews.length;
 
     await product.save();
     res.status(201).json({ message: 'Verified review added successfully' });
+
   } catch (error: any) {
+    console.error("Review Error:", error);
     res.status(500).json({ message: error.message });
   }
 };
