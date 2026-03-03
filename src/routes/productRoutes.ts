@@ -12,7 +12,8 @@ import {
   createProductReview,
   reportReview,
   voteReview,
-  updateProductReview
+  updateProductReview,
+  getSimilarProducts
 } from '../controllers/productController.js';
 import { authenticate, authorizeRoles } from '../middleware/auth.js';
 
@@ -33,6 +34,7 @@ router.get('/', getPublishedProducts);
 
 // 3. Dynamic ID Routes MUST go last! (Otherwise they intercept the routes above)
 router.get('/:id', getProductById);
+router.get('/:id/similar', getSimilarProducts);
 router.route('/:id/reviews').post(authenticate, createProductReview);
 router.route('/:id/reviews/:reviewId').put(authenticate, updateProductReview);
 router.route('/:id/reviews/:reviewId/vote').put(authenticate, voteReview);

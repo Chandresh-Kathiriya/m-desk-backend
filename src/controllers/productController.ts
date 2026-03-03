@@ -320,3 +320,65 @@ export const reportReview = async (req: Request, res: Response): Promise<void> =
     }
   } catch (error: any) { res.status(500).json({ message: error.message }); }
 };
+
+// @desc    Get similar products with fallback logic (Type -> Category -> Brand)
+// @route   GET /api/products/:id/similar
+// @access  Public
+export const getSimilarProducts = async (req: Request, res: Response): Promise<void> => {
+  try {
+      const { id } = req.params;
+      const { type, category, brand } = req.query;
+
+      let similarProducts: any[] = [];
+      const limit = 10; // Max number of images/products we want
+
+      // 1. PRIORITY 1: Match Exact Product Type
+      if (type) {
+          const typeProducts = await Product.find({
+              _id: { $ne: id }, // Exclude the current product
+              productType: type
+          })
+          .limit(limit)
+          .populate('brand', 'name')
+          .populate('productCategory', 'name');
+          
+          similarProducts = [...typeProducts];
+      }
+
+      // 2. PRIORITY 2: Fill remaining slots with the same Category
+      if (similarProducts.length < limit && category) {
+          // Extract IDs we already found so we don't show duplicates
+          const existingIds = similarProducts.map(p => p._id);
+          
+          const categoryProducts = await Product.find({
+              _id: { $ne: id, $nin: existingIds },
+              productCategory: category
+          })
+          .limit(limit - similarProducts.length)
+          .populate('brand', 'name')
+          .populate('productCategory', 'name');
+          
+          similarProducts = [...similarProducts, ...categoryProducts];
+      }
+
+      // 3. PRIORITY 3: Fill remaining slots with the same Brand
+      if (similarProducts.length < limit && brand) {
+          const existingIds = similarProducts.map(p => p._id);
+          
+          const brandProducts = await Product.find({
+              _id: { $ne: id, $nin: existingIds },
+              brand: brand
+          })
+          .limit(limit - similarProducts.length)
+          .populate('brand', 'name')
+          .populate('productCategory', 'name');
+          
+          similarProducts = [...similarProducts, ...brandProducts];
+      }
+
+      res.json(similarProducts);
+  } catch (error: any) {
+      console.error("Error fetching similar products:", error);
+      res.status(500).json({ message: 'Server Error fetching similar products' });
+  }
+};
