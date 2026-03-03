@@ -18,7 +18,7 @@ export interface ICustomerInvoice extends Document {
   totalAmount: number;
   paidAmount: number;
   discountAmount: number;
-  status: 'draft' | 'confirmed' | 'paid' | 'partially_paid';
+  status: 'draft' | 'confirmed' | 'paid' | 'partially_paid' | 'unpaid';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -94,7 +94,7 @@ const customerInvoiceSchema = new Schema<ICustomerInvoice>(
     },
     status: {
       type: String,
-      enum: ['draft', 'confirmed', 'paid', 'partially_paid'],
+      enum: ['draft', 'confirmed', 'paid', 'partially_paid', 'unpaid'],
       default: 'draft',
     },
   },

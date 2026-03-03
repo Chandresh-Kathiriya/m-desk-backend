@@ -9,6 +9,12 @@ export interface IOrder extends Document {
     postalCode: string;
     country: string;
   };
+  billingAddress?: {
+    address: string;
+    city: string;
+    postalCode: string;
+    country: string;
+  };
   paymentMethod: string;
   paymentResult?: {
     id: string;
@@ -20,20 +26,22 @@ export interface IOrder extends Document {
   shippingPrice: number;
   totalPrice: number;
   totalCost: number;
-  
-  // --- UPDATED: Made optional to support Manual Orders ---
-  paymentTerm?: mongoose.Types.ObjectId; 
+
+  paymentTerm?: mongoose.Types.ObjectId;
   paymentTermsPreview?: string;
-  
-  // --- NEW: Admin Manual Order Fields ---
+
   isManualEntry: boolean;
-  manualPaymentDays?: number; // Stores the 0-365 days entered by admin
+  manualPaymentDays?: number;
+  
+  // --- NEW: Separate Invoice Date for ERP ---
+  invoiceDate?: Date;
 
   isPaid: boolean;
   paidAt?: Date;
   isDelivered: boolean;
   deliveredAt?: Date;
-  
+  createdBy?: mongoose.Types.ObjectId;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -69,6 +77,12 @@ const orderSchema = new Schema<IOrder>(
       postalCode: { type: String, required: true },
       country: { type: String, required: true },
     },
+    billingAddress: {
+      address: { type: String },
+      city: { type: String },
+      postalCode: { type: String },
+      country: { type: String },
+    },
     paymentMethod: {
       type: String,
       required: true,
@@ -97,10 +111,8 @@ const orderSchema = new Schema<IOrder>(
     totalCost: {
       type: Number,
       required: true,
-      default: 0.0, 
+      default: 0.0,
     },
-    
-    // --- UPDATED: Removed required: true ---
     paymentTerm: {
       type: Schema.Types.ObjectId,
       ref: 'PaymentTerm'
@@ -108,8 +120,6 @@ const orderSchema = new Schema<IOrder>(
     paymentTermsPreview: {
       type: String
     },
-
-    // --- NEW: Admin Manual Order Fields ---
     isManualEntry: {
       type: Boolean,
       default: false
@@ -117,6 +127,11 @@ const orderSchema = new Schema<IOrder>(
     manualPaymentDays: {
       type: Number,
       default: 0
+    },
+    
+    // --- NEW: Map the separate Invoice Date ---
+    invoiceDate: {
+      type: Date,
     },
 
     isPaid: {
@@ -135,9 +150,14 @@ const orderSchema = new Schema<IOrder>(
     deliveredAt: {
       type: Date,
     },
+    createdBy: {
+      type: Schema.Types.ObjectId,
+      required: false, 
+      ref: 'User',
+    },
   },
   {
-    timestamps: true,
+    timestamps: true, // This natively creates exact `createdAt` and `updatedAt` with time!
   }
 );
 

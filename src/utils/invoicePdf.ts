@@ -8,13 +8,24 @@ export const buildInvoicePDF = (invoice: any, res: Response) => {
     // 2. Pipe the PDF directly to the Express Response object
     doc.pipe(res);
 
+    // --- CHECK PAYMENT STATUS ---
+    // Safely check if the invoice status is 'paid', or fallback to checking the sales order's isPaid boolean
+    const isPaid = invoice.status?.toLowerCase() === 'paid' || invoice.salesOrder?.isPaid === true;
+
     // --- HEADER ---
     doc.fillColor('#111827').fontSize(24).text('TAX INVOICE', 50, 50);
+    
+    // --- ADD PAYMENT STAMP (Top Right) ---
+    if (isPaid) {
+        doc.fillColor('#059669').fontSize(20).text('PAID', 400, 50, { width: 150, align: 'right' });
+    } else {
+        doc.fillColor('#DC2626').fontSize(20).text('UNPAID', 400, 50, { width: 150, align: 'right' });
+    }
     
     doc.fontSize(10).fillColor('#6B7280')
        .text(`Invoice Number: ${invoice.invoiceNumber}`, 50, 80)
        .text(`Date: ${new Date(invoice.invoiceDate).toLocaleDateString()}`, 50, 95)
-       .text(`Order Ref: ${invoice.salesOrder._id}`, 50, 110);
+       .text(`Order Ref: ${invoice.salesOrder?._id || 'N/A'}`, 50, 110);
 
     // --- BILLED TO ---
     doc.fillColor('#111827').fontSize(12).text('Billed To:', 50, 140);
@@ -60,7 +71,7 @@ export const buildInvoicePDF = (invoice: any, res: Response) => {
     // --- TOTALS SECTION ---
     const shipping = invoice.salesOrder?.shippingPrice || 0;
     
-    // Smart Discount Math (Mirroring your frontend logic!)
+    // Smart Discount Math
     const displayDiscount = invoice.discountAmount > 0 
         ? invoice.discountAmount 
         : (calculatedSubtotal + shipping) - invoice.totalAmount;
@@ -85,10 +96,18 @@ export const buildInvoicePDF = (invoice: any, res: Response) => {
         yPosition += 20;
     }
 
-    // Final Total Paid
+    // --- FINAL TOTAL / BALANCE DUE ---
     yPosition += 5;
     doc.font('Helvetica-Bold').fillColor('#111827').fontSize(14);
-    doc.text('Total Paid:', 350, yPosition, { width: 100, align: 'right' });
+    
+    // Dynamically change the label based on the payment status
+    if (isPaid) {
+        doc.text('Total Paid:', 350, yPosition, { width: 100, align: 'right' });
+    } else {
+        doc.fillColor('#DC2626'); // Make "Balance Due" red to highlight it
+        doc.text('Balance Due:', 350, yPosition, { width: 100, align: 'right' });
+    }
+    
     doc.text(`Rs. ${invoice.totalAmount.toFixed(2)}`, 470, yPosition, { width: 80, align: 'right' });
 
     // --- FOOTER ---
