@@ -23,6 +23,7 @@ import vendorBillRoutes from './routes/vendorBillRoutes.js';
 import reportRoutes from './routes/reportRoutes.js';
 import masterDataRoutes from './routes/masterDataRoutes.js';
 import userRoutes from './routes/userRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 
 const app: Application = express();
 
@@ -51,6 +52,7 @@ app.use('/api/payment-terms', paymentTermRoutes);
 app.use('/api/discounts', discountRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/purchases', purchaseRoutes);
