@@ -13,6 +13,7 @@ import {
   reportReview,
   voteReview,
   updateProductReview,
+  deleteProductReview, // <-- NEW: Import the delete function
   getSimilarProducts
 } from '../controllers/productController.js';
 import { authenticate, authorizeRoles } from '../middleware/auth.js';
@@ -32,11 +33,16 @@ router.get('/public/:id', getPublicProductById);
 // 2. General Routes go second
 router.get('/', getPublishedProducts);
 
-// 3. Dynamic ID Routes MUST go last! (Otherwise they intercept the routes above)
+// 3. Dynamic ID Routes MUST go last!
 router.get('/:id', getProductById);
 router.get('/:id/similar', getSimilarProducts);
 router.route('/:id/reviews').post(authenticate, createProductReview);
-router.route('/:id/reviews/:reviewId').put(authenticate, updateProductReview);
+
+// <-- NEW: Chained the .delete() method onto your existing route! -->
+router.route('/:id/reviews/:reviewId')
+  .put(authenticate, updateProductReview)
+  .delete(authenticate, deleteProductReview); 
+
 router.route('/:id/reviews/:reviewId/vote').put(authenticate, voteReview);
 router.route('/:id/reviews/:reviewId/report').put(authenticate, reportReview);
 

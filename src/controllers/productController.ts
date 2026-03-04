@@ -413,3 +413,47 @@ export const getSimilarProducts = async (req: Request, res: Response): Promise<v
       res.status(500).json({ message: 'Server Error fetching similar products' });
   }
 };
+
+// @desc    Delete a product review
+// @route   DELETE /api/products/:id/reviews/:reviewId
+// @access  Private
+export const deleteProductReview = async (req: any, res: any) => {
+  try {
+      const product = await Product.findById(req.params.id);
+
+      if (!product) {
+          return res.status(404).json({ message: 'Product not found' });
+      }
+
+      // Find the specific review
+      const review = product.reviews.find((r: any) => r._id.toString() === req.params.reviewId);
+
+      if (!review) {
+          return res.status(404).json({ message: 'Review not found' });
+      }
+
+      // Authorization check: Make sure the logged-in user wrote the review
+      const userId = req.user?._id || req.user?.id || req.user?.userId;
+      if (review.user.toString() !== userId.toString()) {
+          return res.status(401).json({ message: 'Not authorized to delete this review' });
+      }
+
+      // Remove the review from the array
+      product.reviews = product.reviews.filter((r: any) => r._id.toString() !== req.params.reviewId);
+
+      // Recalculate the overall rating and number of reviews
+      product.numReviews = product.reviews.length;
+      
+      if (product.numReviews === 0) {
+          product.rating = 0;
+      } else {
+          product.rating = product.reviews.reduce((acc: number, item: any) => item.rating + acc, 0) / product.reviews.length;
+      }
+
+      await product.save();
+      res.status(200).json({ message: 'Review deleted successfully' });
+
+  } catch (error: any) {
+      res.status(500).json({ message: 'Server Error', error: error.message });
+  }
+};
